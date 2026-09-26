@@ -10,6 +10,9 @@ export const dynamic = 'force-dynamic'
  */
 export default async function AppLayout({ children }: LayoutProps<'/'>) {
   const result = await resolveViewer()
-  if (!result.viewer) redirect(result.reason === 'not-allowed' ? '/login?error=email_domain_not_allowed' : '/login')
+  if (!result.viewer) {
+    const error = result.reason === 'not-allowed' ? 'email_domain_not_allowed' : result.reason === 'unverified' ? 'email_not_verified' : undefined
+    redirect(error ? `/login?error=${error}` : '/login')
+  }
   return children
 }

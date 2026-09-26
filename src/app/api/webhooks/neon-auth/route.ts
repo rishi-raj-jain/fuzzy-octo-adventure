@@ -11,8 +11,12 @@ interface NeonAuthEvent {
 }
 
 /**
- * Neon Auth webhook (register it for `user.before_create`). Blocks sign-ups that aren't Google accounts on an
- * allowed domain before the user is written. Neon Auth fails closed: if this endpoint errors, the sign-up is refused.
+ * Neon Auth webhook (register it for `user.before_create`). Blocks sign-ups whose email isn't on an allowed domain
+ * before the user is written. Neon Auth fails closed: if this endpoint errors, the sign-up is refused.
+ *
+ * The decision uses the email domain only. `event_data.auth_provider` is not reliable (Google sign-ups arrive as
+ * "credential"); password sign-ups are instead disabled in Neon, refused by /api/auth, and unverified emails are
+ * rejected by the app.
  */
 export async function POST(req: Request) {
   if (!process.env.NEON_AUTH_BASE_URL) return jsonError('Neon Auth is not configured', 503)
@@ -27,11 +31,9 @@ export async function POST(req: Request) {
   if (event.event_type !== 'user.before_create') return Response.json({ received: true })
 
   const email = event.user?.email
-  const provider = event.event_data?.auth_provider
-  if (provider === 'credential') {
-    return Response.json({ allowed: false, error_code: 'google_only', error_message: 'Only Google sign-in is available.' })
-  }
-  if (!isAllowedEmail(email)) {
+  const allowed = isAllowedEmail(email)
+  console.info('[neon-auth webhook] user.before_create', { domain: email?.split('@')[1], provider: event.event_data?.auth_provider, allowed })
+  if (!allowed) {
     return Response.json({
       allowed: false,
       error_code: 'email_domain_not_allowed',

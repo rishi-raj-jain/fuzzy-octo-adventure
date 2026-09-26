@@ -34,7 +34,7 @@ export interface Viewer {
   image?: string | null
 }
 
-export type ViewerResult = { viewer: Viewer } | { viewer: null; reason: 'signed-out' | 'not-allowed' | 'misconfigured' }
+export type ViewerResult = { viewer: Viewer } | { viewer: null; reason: 'signed-out' | 'not-allowed' | 'unverified' | 'misconfigured' }
 
 const DEV_VIEWER: Viewer = { id: 'dev', email: 'dev@localhost', name: 'Local developer' }
 
@@ -52,7 +52,8 @@ export async function resolveViewer(): Promise<ViewerResult> {
     .catch(() => ({ data: null }))
   const user = data?.user
   if (!user) return { viewer: null, reason: 'signed-out' }
-  if (!user.emailVerified || !isAllowedEmail(user.email)) return { viewer: null, reason: 'not-allowed' }
+  if (!isAllowedEmail(user.email)) return { viewer: null, reason: 'not-allowed' }
+  if (!user.emailVerified) return { viewer: null, reason: 'unverified' }
   return { viewer: { id: user.id, email: user.email, name: user.name, image: user.image } }
 }
 

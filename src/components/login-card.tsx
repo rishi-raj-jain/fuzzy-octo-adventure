@@ -32,9 +32,15 @@ function errorText(code: string, description: string | undefined, domains: strin
     case 'access_denied':
       return { title: 'Sign-in was cancelled', body: 'Google sign-in was cancelled before it finished.' }
     case 'email_not_verified':
-      return { title: 'Email not verified', body: 'Your Google account email must be verified.' }
-    default:
-      return { title: 'Sign-in failed', body: description ?? `Something went wrong (${code.replace(/_/g, ' ')}). Please try again.` }
+      return { title: 'Email not verified', body: 'Your Google account’s email address must be verified to use NavProbe.' }
+    default: {
+      // Errors raised during Neon Auth's OAuth callback (e.g. a webhook denial) arrive as the message with spaces
+      // turned into underscores: show them as sentences rather than codes.
+      const text = code.replace(/_/g, ' ').trim()
+      if (/\bnot allowed\b/i.test(text)) return { title: 'This Google account isn’t allowed', body: text }
+      if (/\s/.test(text)) return { title: 'Sign-in failed', body: description ?? text }
+      return { title: 'Sign-in failed', body: description ?? `Something went wrong (${text}). Please try again.` }
+    }
   }
 }
 
