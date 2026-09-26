@@ -9,6 +9,7 @@ You give it a URL and a list of steps: wait _n_ seconds, run JavaScript in the p
 - A **request waterfall** grouped by step, the **console log** (including page errors and dialogs), each script's **return value**, and the URL changes seen in each step.
 - **Emulation** of device (desktop, iPhone, Android), network (Fast 4G through Slow 3G), CPU throttling, user agent and extra headers.
 - **History** in Neon Postgres (Drizzle ORM). Every run gets a permalink, and navigations are stored as rows so you can query vitals over time.
+- **Run comparison** (`/compare?runs=a,b`), in the spirit of WebPageTest's filmstrip view. Up to 4 runs play on one time axis, aligned on any navigation (initial load or a later click). Highlighted frames show visual changes, FCP/LCP/visually-complete are marked in place, and timings and every metric are shown with deltas against run A. Tick runs in _Recent runs_ or use **Compare** on a run page.
 - **Filmstrips in Neon Object Storage** (S3-compatible, via `aws4fetch`), served to the browser through short-lived presigned URLs.
 - **Sign in with Google** through [Neon Auth](https://neon.com/docs/auth/overview), limited to allowed email domains (`@launchfa.st`, `@neon.com`, `@neon.tech` and `@databricks.com` by default). Programmatic clients use an API key instead.
 - **Responsive UI** from 320 px phones to wide desktops, with larger touch targets on touch devices.

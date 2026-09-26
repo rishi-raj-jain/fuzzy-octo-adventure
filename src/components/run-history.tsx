@@ -3,14 +3,17 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Skeleton } from '@/components/ui/skeleton'
 import { apiFetch } from '@/lib/api-client'
 import { authClient } from '@/lib/auth/client'
+import { MAX_COMPARE } from '@/lib/compare'
 import { formatCls, formatMs, rate, RATING_CLASS, shortUrl } from '@/lib/format'
 import type { RunListItem } from '@/lib/store'
 import { cn } from '@/lib/utils'
-import { History, RefreshCw, Trash2 } from 'lucide-react'
+import { GitCompareArrows, History, RefreshCw, Trash2 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -34,6 +37,9 @@ export function RunHistory({ refreshKey, persistence, authMode }: { refreshKey: 
   const [runs, setRuns] = useState<RunListItem[] | null>(null)
   const [error, setError] = useState<string>()
   const [mine, setMine] = useState(false)
+  const [selected, setSelected] = useState<string[]>([])
+  const router = useRouter()
+  const toggle = (id: string, on: boolean) => setSelected((s) => (on ? [...s.filter((x) => x !== id), id].slice(-MAX_COMPARE) : s.filter((x) => x !== id)))
   const { data: session } = authClient.useSession()
   const viewerEmail = authMode === 'disabled' ? 'dev@localhost' : session?.user.email
 
@@ -68,7 +74,7 @@ export function RunHistory({ refreshKey, persistence, authMode }: { refreshKey: 
         <CardTitle className="flex items-center gap-2">
           <History className="size-4" /> Recent runs
         </CardTitle>
-        <CardDescription>{persistence ? 'Shared with your team. Open one for the full report.' : 'Set DATABASE_URL to keep a history of runs.'}</CardDescription>
+        <CardDescription>{persistence ? 'Shared with your team. Open one for the full report, or tick two or more to compare.' : 'Set DATABASE_URL to keep a history of runs.'}</CardDescription>
         {persistence && (
           <CardAction className="flex items-center gap-1">
             <div className="flex rounded-lg bg-muted p-0.5 text-xs">
@@ -101,7 +107,14 @@ export function RunHistory({ refreshKey, persistence, authMode }: { refreshKey: 
             const lcpRating = rate('lcp', run.initial?.lcp)
             const canDelete = !run.createdBy || run.createdBy === viewerEmail
             return (
-              <div key={run.id} className="group/run flex items-center gap-3 rounded-md px-2 py-2 hover:bg-muted/60 pointer-coarse:py-2.5">
+              <div key={run.id} className={cn('group/run flex items-center gap-3 rounded-md px-2 py-2 hover:bg-muted/60 pointer-coarse:py-2.5', selected.includes(run.id) && 'bg-muted/60')}>
+                <Checkbox
+                  aria-label={`Select ${run.title || shortUrl(run.url)} for comparison`}
+                  checked={selected.includes(run.id)}
+                  disabled={run.status === 'running'}
+                  onCheckedChange={(on) => toggle(run.id, on)}
+                  className="pointer-coarse:size-5"
+                />
                 <span className={cn('size-2 shrink-0 rounded-full', STATUS_CLASS[run.status])} title={run.status} />
                 <Link href={`/runs/${run.id}`} className="grid min-w-0 flex-1 gap-0.5">
                   <span className="truncate text-sm font-medium">{run.title || shortUrl(run.url)}</span>
@@ -143,6 +156,20 @@ export function RunHistory({ refreshKey, persistence, authMode }: { refreshKey: 
               </div>
             )
           })}
+          {selected.length > 0 && (
+            <div className="sticky bottom-2 z-10 mt-2 flex items-center gap-2 rounded-lg border bg-card/95 p-2 pl-3 shadow-sm backdrop-blur">
+              <span className="min-w-0 flex-1 text-xs text-muted-foreground">
+                {selected.length === 1 ? 'Select one more run to compare' : `${selected.length} runs selected`}
+                {selected.length >= MAX_COMPARE && ` (max ${MAX_COMPARE})`}
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => setSelected([])}>
+                Clear
+              </Button>
+              <Button size="sm" disabled={selected.length < 2} onClick={() => router.push(`/compare?runs=${selected.join(',')}`)}>
+                <GitCompareArrows /> Compare
+              </Button>
+            </div>
+          )}
         </CardContent>
       )}
     </Card>

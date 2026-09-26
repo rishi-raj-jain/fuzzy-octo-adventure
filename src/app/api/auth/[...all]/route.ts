@@ -10,9 +10,10 @@ export const runtime = 'nodejs'
 const ALLOWED = new Set(['get-session', 'sign-in/social', 'sign-out', 'token'])
 
 async function handle(req: Request, ctx: RouteContext<'/api/auth/[...all]'>) {
-  if (authMode() !== 'neon') return jsonError('Sign-in is not configured', 503)
   const { all } = await ctx.params
   const path = all.join('/')
+  // Without Neon Auth there is never a session; answer the client's session poll quietly.
+  if (authMode() !== 'neon') return path === 'get-session' ? Response.json(null) : jsonError('Sign-in is not configured', 503)
   if (!ALLOWED.has(path)) return jsonError('Only Google sign-in is available', 404)
   if (path === 'sign-in/social') {
     const body = await req

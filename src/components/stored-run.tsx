@@ -5,7 +5,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { apiFetch } from '@/lib/api-client'
 import type { RunSummary } from '@/lib/scenario/schema'
-import { ArrowLeft, Pencil } from 'lucide-react'
+import { ArrowLeft, GitCompareArrows, Pencil } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 
@@ -29,13 +29,18 @@ export function StoredRun({ id }: { id: string }) {
 
   return (
     <div className="grid gap-4">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Link href="/" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
           <ArrowLeft /> New run
         </Link>
         {run && (
           <Link href={`/?from=${run.id}`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
             <Pencil /> Edit &amp; re-run
+          </Link>
+        )}
+        {run && (
+          <Link href={`/compare?runs=${run.id}`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+            <GitCompareArrows /> Compare
           </Link>
         )}
       </div>
