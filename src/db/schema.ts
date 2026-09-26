@@ -13,6 +13,8 @@ export const runs = pgTable(
     status: text('status', { enum: ['running', 'ok', 'error', 'timeout', 'aborted'] }).notNull(),
     /** Email of the signed-in user, or "api-key" for programmatic runs. */
     createdBy: text('created_by'),
+    /** Vercel region the browser ran in (e.g. "fra1"), or "local". */
+    region: text('region'),
     error: text('error'),
     durationMs: integer('duration_ms'),
     browserVersion: text('browser_version'),

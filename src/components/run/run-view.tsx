@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { LiveRun } from '@/hooks/use-run'
 import { formatBytes, formatMs, shortUrl } from '@/lib/format'
+import { regionLabel } from '@/lib/regions'
 import { DEVICES, NETWORKS, type RunSummary } from '@/lib/scenario/schema'
 import { cn } from '@/lib/utils'
 import { AlertTriangle, Download, ExternalLink, Loader2 } from 'lucide-react'
@@ -102,6 +103,7 @@ export function RunView({ run, showPermalink = true }: { run: LiveRun; showPerma
           {run.running && run.plan.length > 0 && <StepTimeline plan={run.plan} steps={run.steps} activeStep={run.activeStep} />}
           {result?.browserVersion && (
             <p className="text-[11px] break-words text-muted-foreground">
+              {result.region && <>Ran in {regionLabel(result.region)} · </>}
               {result.browserVersion} · started {new Date(result.startedAt).toLocaleString()}
               {result.createdBy && <> · by {result.createdBy}</>}
             </p>

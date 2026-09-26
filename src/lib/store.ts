@@ -68,8 +68,8 @@ export function persistentAssetSink(runId: string): AssetSink {
   }
 }
 
-export async function createRun(id: string, request: RunRequest, input: RunInput, createdBy: string) {
-  await getDb().insert(runs).values({ id, url: input.url, status: 'running', createdBy, device: input.options.device, network: input.options.network, input: request, options: input.options })
+export async function createRun(id: string, request: RunRequest, input: RunInput, createdBy: string, region: string) {
+  await getDb().insert(runs).values({ id, url: input.url, status: 'running', createdBy, region, device: input.options.device, network: input.options.network, input: request, options: input.options })
 }
 
 export async function finishRun(run: RunSummary) {
@@ -172,6 +172,7 @@ function toSummary(row: RunRow, navs: NavigationRow[]): RunSummary {
     },
     persisted: true,
     createdBy: row.createdBy ?? undefined,
+    region: row.region ?? undefined,
   }
 }
 
@@ -190,6 +191,7 @@ export interface RunListItem {
   title?: string
   status: RunRow['status']
   createdBy?: string
+  region?: string
   createdAt: string
   durationMs?: number
   device: string
@@ -210,6 +212,7 @@ export async function listRuns({ limit = 20, before, url, createdBy }: { limit?:
       title: runs.title,
       status: runs.status,
       createdBy: runs.createdBy,
+      region: runs.region,
       createdAt: runs.createdAt,
       durationMs: runs.durationMs,
       device: runs.device,
@@ -243,6 +246,7 @@ export async function listRuns({ limit = 20, before, url, createdBy }: { limit?:
       title: r.title ?? undefined,
       status: r.status,
       createdBy: r.createdBy ?? undefined,
+      region: r.region ?? undefined,
       createdAt: r.createdAt.toISOString(),
       durationMs: r.durationMs ?? undefined,
       device: r.device,

@@ -1,3 +1,4 @@
+import { REGION_CODES } from '@/lib/regions'
 import { z } from 'zod'
 
 export const MAX_STEPS = 25
@@ -69,6 +70,8 @@ export const optionsSchema = z.object({
   continueOnError: z.boolean().default(false),
   userAgent: z.string().max(1000).optional(),
   headers: z.record(z.string(), z.string()).optional(),
+  /** Vercel region to run in (see src/lib/regions.ts). Omit for the deployment's default region. */
+  region: z.enum(REGION_CODES).optional(),
 })
 
 /**
@@ -253,6 +256,8 @@ export interface RunSummary {
   persisted: boolean
   /** Email of the user who started the run, or "api-key". */
   createdBy?: string
+  /** Region the browser actually ran in: a Vercel region code, or "local". */
+  region?: string
 }
 
 export type RunEvent =

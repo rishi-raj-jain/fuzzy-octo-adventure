@@ -1,10 +1,12 @@
 'use client'
 
+import type { Region } from '@/lib/regions'
 import { useEffect, useState } from 'react'
 
 export interface Health {
   auth: { mode: 'neon' | 'disabled' | 'misconfigured'; allowedDomains: string[]; apiKey: boolean }
   persistence: boolean
+  regions: { default: string; enabled: { code: Region; location: string }[] }
   limits: { maxRunSeconds: number; maxSteps: number; maxWaitSeconds: number }
 }
 

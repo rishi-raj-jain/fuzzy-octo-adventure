@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { apiFetch } from '@/lib/api-client'
 import { autoInterval, comparisonSpan, INTERVALS, MAX_COMPARE, RUN_COLORS } from '@/lib/compare'
 import { formatMs, shortUrl } from '@/lib/format'
+import { regionLabel } from '@/lib/regions'
 import { DEVICES, NETWORKS, type RunSummary } from '@/lib/scenario/schema'
 import type { RunListItem } from '@/lib/store'
 import { cn } from '@/lib/utils'
@@ -125,6 +126,7 @@ export function CompareView() {
               </CardHeader>
               {run && !('error' in run) && (
                 <CardContent className="text-xs text-muted-foreground">
+                  {run.region && <span title={regionLabel(run.region)}>{run.region} · </span>}
                   {DEVICES[run.options.device].label.split(' · ')[0]} · {NETWORKS[run.options.network]} · {new Date(run.startedAt).toLocaleString()}
                 </CardContent>
               )}

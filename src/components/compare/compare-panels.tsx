@@ -3,6 +3,7 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { alignedNavigation, alignmentOffset, delta, frameAt, MILESTONES, RUN_COLORS, runFrames, type Delta } from '@/lib/compare'
 import { formatBytes, formatMs, formatVital, rate, RATING_CLASS, RATING_DOT, shortUrl, VITAL_META } from '@/lib/format'
+import { regionLabel } from '@/lib/regions'
 import { DEVICES, type RunSummary, type Vitals } from '@/lib/scenario/schema'
 import { cn } from '@/lib/utils'
 import { useMemo } from 'react'
@@ -199,6 +200,16 @@ export function MetricsCompare({ runs }: { runs: RunSummary[] }) {
         </thead>
         <tbody>
           <Section title="Run" />
+          <tr>
+            <th scope="row" className="sticky left-0 border-b bg-card px-3 py-2 text-left text-xs font-normal text-muted-foreground">
+              Region
+            </th>
+            {runs.map((run) => (
+              <Cell key={run.id}>
+                <div className="text-xs">{run.region ? regionLabel(run.region) : '—'}</div>
+              </Cell>
+            ))}
+          </tr>
           {totalRow('Duration', (r) => r.durationMs, 'ms')}
           {totalRow('Requests', (r) => r.totals.requests, 'count')}
           {totalRow('Transferred', (r) => r.totals.bytes, 'bytes')}

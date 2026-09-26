@@ -9,6 +9,7 @@ import { apiFetch } from '@/lib/api-client'
 import { authClient } from '@/lib/auth/client'
 import { MAX_COMPARE } from '@/lib/compare'
 import { formatCls, formatMs, rate, RATING_CLASS, shortUrl } from '@/lib/format'
+import { regionLabel } from '@/lib/regions'
 import type { RunListItem } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { GitCompareArrows, History, RefreshCw, Trash2 } from 'lucide-react'
@@ -126,6 +127,14 @@ export function RunHistory({ refreshKey, persistence, authMode }: { refreshKey: 
                       <>
                         <span aria-hidden>·</span>
                         <span className="max-w-40 truncate">{run.createdBy.split('@')[0]}</span>
+                      </>
+                    )}
+                    {run.region && (
+                      <>
+                        <span aria-hidden>·</span>
+                        <span className="font-mono" title={regionLabel(run.region)}>
+                          {run.region}
+                        </span>
                       </>
                     )}
                     <span className="hidden @md:inline" aria-hidden>

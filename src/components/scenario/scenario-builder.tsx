@@ -10,7 +10,9 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import type { Health } from '@/hooks/use-health'
 import { encodeDraft, newStep, toRequest, type Draft } from '@/lib/draft'
+import { regionLabel, regionRunPath, type Region } from '@/lib/regions'
 import { DEVICES, MAX_STEPS, NETWORKS, STEP_LABELS, WAIT_UNTIL, type RunOptions, type StepType } from '@/lib/scenario/schema'
 import { Check, Copy, Globe, Link2, Loader2, Play, Plus, Square } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -46,6 +48,7 @@ export function ScenarioBuilder({
   onCancel,
   running,
   apiKeyEnabled,
+  regions,
 }: {
   draft: Draft
   onChange: (draft: Draft) => void
@@ -53,6 +56,7 @@ export function ScenarioBuilder({
   onCancel: () => void
   running: boolean
   apiKeyEnabled: boolean
+  regions?: Health['regions']
 }) {
   const [headersText, setHeadersText] = useState(() =>
     Object.entries(draft.options.headers ?? {})
@@ -69,10 +73,18 @@ export function ScenarioBuilder({
   }
   const addStep = (type: StepType) => onChange({ ...draft, steps: [...draft.steps, newStep(type)] })
 
+  const regionOptions = useMemo(() => {
+    const options: Record<string, string> = { default: regions ? `Default · ${regionLabel(regions.default)}` : 'Default region' }
+    for (const { code } of regions?.enabled ?? []) options[code] = regionLabel(code)
+    const picked = draft.options.region
+    if (picked && !(picked in options)) options[picked] = `${regionLabel(picked)} (not enabled)`
+    return options as Record<Region | 'default', string>
+  }, [regions, draft.options.region])
+
   const totalWait = draft.steps.reduce((sum, s) => sum + (s.type === 'wait' ? s.seconds || 0 : 0), 0)
   const requestJson = useMemo(() => JSON.stringify(toRequest(draft), null, 2), [draft])
   const origin = typeof window === 'undefined' ? 'https://your-app.vercel.app' : window.location.origin
-  const curl = `curl -X POST ${origin}/api/runs \\\n  -H 'content-type: application/json' \\\n  -H "authorization: Bearer $NAVPROBE_API_KEY" \\\n  -d '${JSON.stringify(toRequest(draft)).replace(/'/g, `'\\''`)}'`
+  const curl = `curl -X POST ${origin}${draft.options.region ? regionRunPath(draft.options.region) : '/api/runs'} \\\n  -H 'content-type: application/json' \\\n  -H "authorization: Bearer $NAVPROBE_API_KEY" \\\n  -d '${JSON.stringify(toRequest(draft)).replace(/'/g, `'\\''`)}'`
 
   return (
     <form
@@ -153,6 +165,14 @@ export function ScenarioBuilder({
             </TabsContent>
 
             <TabsContent value="options" className="grid gap-4 pt-2">
+              <div className="grid min-w-0 gap-1.5">
+                <Label htmlFor="region">Run from</Label>
+                <SimpleSelect id="region" value={draft.options.region ?? 'default'} options={regionOptions} onChange={(v) => setOptions({ region: v === 'default' ? undefined : v })} />
+                <p className="text-[11px] text-muted-foreground">
+                  {regions?.enabled.length ? 'The browser runs in this Vercel region, so TTFB and download times are measured from there.' : 'Set NAVPROBE_REGIONS on the server to run from other Vercel regions.'}
+                </p>
+              </div>
+              <Separator />
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                 <div className="grid min-w-0 gap-1.5">
                   <Label htmlFor="device">Device</Label>

@@ -116,7 +116,7 @@ export function NavProbeApp() {
     <div className="grid grid-cols-1 items-start gap-4 sm:gap-6 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] xl:grid-cols-[minmax(0,460px)_minmax(0,1fr)]">
       {/* On large screens the builder scrolls independently so the Run button never leaves the viewport. */}
       <div className="[scrollbar-width:thin] lg:sticky lg:top-20 lg:-m-1 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto lg:overscroll-contain lg:p-1">
-        <ScenarioBuilder draft={draft} onChange={setDraft} onRun={onRun} onCancel={cancel} running={Boolean(run?.running)} apiKeyEnabled={health?.auth.apiKey ?? false} />
+        <ScenarioBuilder draft={draft} onChange={setDraft} onRun={onRun} onCancel={cancel} running={Boolean(run?.running)} apiKeyEnabled={health?.auth.apiKey ?? false} regions={health?.regions} />
         {health && (
           <p className="mt-2 px-1 text-[11px] text-muted-foreground">
             Runs are limited to {health.limits.maxRunSeconds}s and {health.limits.maxSteps} steps.
