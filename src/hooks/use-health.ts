@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 
 export interface Health {
-  auth: { mode: 'google' | 'disabled' | 'misconfigured'; allowedDomains: string[]; apiKey: boolean }
+  auth: { mode: 'neon' | 'disabled' | 'misconfigured'; allowedDomains: string[]; apiKey: boolean }
   persistence: boolean
   limits: { maxRunSeconds: number; maxSteps: number; maxWaitSeconds: number }
 }

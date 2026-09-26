@@ -30,7 +30,7 @@ function relativeTime(iso: string) {
   return new Date(iso).toLocaleDateString()
 }
 
-export function RunHistory({ refreshKey, persistence, authMode }: { refreshKey: number; persistence: boolean; authMode?: 'google' | 'disabled' | 'misconfigured' }) {
+export function RunHistory({ refreshKey, persistence, authMode }: { refreshKey: number; persistence: boolean; authMode?: 'neon' | 'disabled' | 'misconfigured' }) {
   const [runs, setRuns] = useState<RunListItem[] | null>(null)
   const [error, setError] = useState<string>()
   const [mine, setMine] = useState(false)

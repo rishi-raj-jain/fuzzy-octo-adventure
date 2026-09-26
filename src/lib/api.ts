@@ -22,7 +22,7 @@ function keyMatches(provided: string) {
 /**
  * Every API route calls this. Access is granted to:
  *  - programmatic clients carrying NAVPROBE_API_KEY (`Authorization: Bearer <key>` or `x-api-key`), or
- *  - signed-in users whose Google account is on an allowed domain (session cookie).
+ *  - users signed in with Neon Auth (Google) whose verified email is on an allowed domain (session cookie).
  * Returns a Response to send back when access is denied.
  */
 export async function requireAccess(req: Request): Promise<Access | Response> {
@@ -31,9 +31,9 @@ export async function requireAccess(req: Request): Promise<Access | Response> {
     return keyMatches(key) ? { kind: 'api-key', actor: 'api-key' } : jsonError('Invalid API key', 401)
   }
   if (authMode() === 'misconfigured') {
-    return jsonError('Sign-in is not configured on this deployment (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, BETTER_AUTH_SECRET and DATABASE_URL are required).', 503)
+    return jsonError('Sign-in is not configured on this deployment (NEON_AUTH_BASE_URL and NEON_AUTH_COOKIE_SECRET are required).', 503)
   }
-  const viewer = await getViewer(req.headers)
+  const viewer = await getViewer()
   if (!viewer) return jsonError('Sign in with an allowed Google account, or pass an API key as `Authorization: Bearer <key>`.', 401)
   return { kind: 'user', viewer, actor: viewer.email }
 }

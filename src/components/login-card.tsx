@@ -8,7 +8,7 @@ import { authClient } from '@/lib/auth/client'
 import type { AuthMode } from '@/lib/auth/server'
 import { AlertTriangle, Loader2, ShieldCheck } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 function GoogleIcon() {
   return (
@@ -25,7 +25,10 @@ function errorText(code: string, description: string | undefined, domains: strin
   const list = domains.map((d) => `@${d}`).join(' or ')
   switch (code) {
     case 'email_domain_not_allowed':
+    case 'DOMAIN_BLOCKED':
       return { title: 'This Google account isn’t allowed', body: description ?? `Only ${list} accounts can sign in.` }
+    case 'google_only':
+      return { title: 'Use Google to sign in', body: 'Only Google sign-in is available.' }
     case 'access_denied':
       return { title: 'Sign-in was cancelled', body: 'Google sign-in was cancelled before it finished.' }
     case 'email_not_verified':
@@ -35,17 +38,27 @@ function errorText(code: string, description: string | undefined, domains: strin
   }
 }
 
-export function LoginCard({ mode, next, domains, error, errorDescription }: { mode: AuthMode; next: string; domains: string[]; error?: string; errorDescription?: string }) {
+export function LoginCard({ mode, next, domains, error, errorDescription, signOutFirst }: { mode: AuthMode; next: string; domains: string[]; error?: string; errorDescription?: string; signOutFirst?: boolean }) {
   const [pending, setPending] = useState(false)
   const [clientError, setClientError] = useState<string>()
   const failure = error ? errorText(error, errorDescription, domains) : undefined
 
+  // An account outside the allowed domains is signed in with Neon Auth but useless here: clear it so
+  // the next attempt can use a different Google account.
+  useEffect(() => {
+    if (signOutFirst) void authClient.signOut()
+  }, [signOutFirst])
+
   const signIn = async () => {
     setPending(true)
     setClientError(undefined)
-    // Keep shared-scenario links (#s=…) across the Google round-trip.
-    const callbackURL = next + (typeof window !== 'undefined' ? window.location.hash : '')
-    const { error } = await authClient.signIn.social({ provider: 'google', callbackURL, errorCallbackURL: `/login${next === '/' ? '' : `?next=${encodeURIComponent(next)}`}` })
+    const origin = window.location.origin
+    // Absolute URLs: Neon Auth runs on its own domain and redirects back here. Keep share links (#s=…).
+    const { error } = await authClient.signIn.social({
+      provider: 'google',
+      callbackURL: `${origin}${next}${window.location.hash}`,
+      errorCallbackURL: `${origin}/login${next === '/' ? '' : `?next=${encodeURIComponent(next)}`}`,
+    })
     if (error) {
       setClientError(error.message ?? 'Could not start Google sign-in')
       setPending(false)
@@ -79,7 +92,7 @@ export function LoginCard({ mode, next, domains, error, errorDescription }: { mo
             <AlertTriangle />
             <AlertTitle>Sign-in isn&apos;t configured</AlertTitle>
             <AlertDescription>
-              Set <code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>, <code>BETTER_AUTH_SECRET</code> and <code>DATABASE_URL</code> on this deployment.
+              Set <code>NEON_AUTH_BASE_URL</code> and <code>NEON_AUTH_COOKIE_SECRET</code> on this deployment.
             </AlertDescription>
           </Alert>
         ) : mode === 'disabled' ? (

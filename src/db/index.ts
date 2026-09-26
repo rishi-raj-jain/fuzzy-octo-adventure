@@ -1,9 +1,6 @@
 import { neon } from '@neondatabase/serverless'
 import { drizzle } from 'drizzle-orm/neon-http'
-import * as authSchema from './auth-schema'
-import * as appSchema from './schema'
-
-const schema = { ...appSchema, ...authSchema }
+import * as schema from './schema'
 
 export const hasDatabase = () => Boolean(process.env.DATABASE_URL)
 
