@@ -9,6 +9,8 @@ You give it a URL and a list of steps: wait _n_ seconds, run JavaScript in the p
 - A **request waterfall** grouped by step, the **console log** (including page errors and dialogs), each script's **return value**, and the URL changes seen in each step.
 - **Emulation** of device (desktop, iPhone, Android), network (Fast 4G through Slow 3G), CPU throttling, user agent and extra headers.
 - **History** in Neon Postgres (Drizzle ORM). Every run gets a permalink, and navigations are stored as rows so you can query vitals over time.
+- **Google sign-in** (Better Auth), limited to allowed email domains (`@launchfa.st` and `@neon.com` by default). Programmatic clients use an API key instead.
+- **Responsive UI** from 320 px phones to wide desktops, with larger touch targets on touch devices.
 
 The UI (Next.js App Router + shadcn/ui) is a thin client over the HTTP API, so anything you can do in the browser you can also do with `curl`.
 
@@ -16,10 +18,12 @@ The UI (Next.js App Router + shadcn/ui) is a thin client over the HTTP API, so a
 
 ```bash
 npm install
-cp .env.example .env.local        # set DATABASE_URL (optional, enables history)
+cp .env.example .env.local        # set DATABASE_URL, and the Google/Better Auth variables to test sign-in
 npm run db:migrate                # creates the tables in your Neon database
 npm run dev
 ```
+
+Without Google credentials, `next dev` runs with sign-in **turned off** (the header shows an "Auth off (dev)" badge). Production refuses all access until sign-in is configured.
 
 Locally, the app uses `CHROME_EXECUTABLE_PATH` or the first Chrome/Chromium it finds (macOS Chrome, `/usr/bin/google-chrome`, Playwright's browsers, …). On Vercel it uses [`@sparticuz/chromium`](https://github.com/Sparticuz/chromium).
 
@@ -28,7 +32,26 @@ Locally, the app uses `CHROME_EXECUTABLE_PATH` or the first Chrome/Chromium it f
 1. Import the repo in Vercel.
 2. Add a Neon database (Storage → Neon, or the Neon integration). It sets `DATABASE_URL` for you.
 3. Run the migrations once against that database: `DATABASE_URL=... npm run db:migrate`.
-4. Recommended: set `NAVPROBE_API_KEY` so strangers can't use your deployment as a free remote browser.
+4. Set up Google sign-in (below).
+5. Optional: set `NAVPROBE_API_KEY` to allow API access without a browser session (scripts, CI).
+
+### Google sign-in
+
+1. In the Google Cloud Console, open **APIs & Services → Credentials → Create credentials → OAuth client ID** and choose **Web application**.
+2. Add an authorized redirect URI for every origin you'll sign in from:
+   - `https://<your-domain>/api/auth/callback/google`
+   - `http://localhost:3000/api/auth/callback/google` for local development
+3. In Vercel, set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `BETTER_AUTH_SECRET` (generate with `openssl rand -base64 32`), and `BETTER_AUTH_URL` (your production URL, e.g. `https://navprobe.vercel.app`).
+4. Optional: change who can sign in with `ALLOWED_EMAIL_DOMAINS` (comma separated). The default is `launchfa.st,neon.com`.
+
+How access is enforced:
+
+- **New accounts:** Google must report the email as verified, and its domain must exactly match an allowed domain. `a@neon.com` is allowed. `a@sub.neon.com` and `a@neon.com.evil.dev` are not.
+- **Every sign-in** re-checks the domain. If you remove a domain from `ALLOWED_EMAIL_DOMAINS`, its users are locked out at their next sign-in, and every request also re-checks the session user's email.
+- Rejected users land back on `/login` with an explanation.
+- **Pages:** `src/proxy.ts` sends signed-out visitors to `/login`.
+- **API routes:** these need either a session or `NAVPROBE_API_KEY`. That includes screenshots under `/api/assets/*`.
+- **Team history:** runs are shared across the team. Each run records who started it, and only that person (or an API key) can delete it.
 
 `/api/runs` exports `maxDuration = 300`, and the runner stops scheduling steps after `MAX_RUN_SECONDS` (default 270) so there's time to save the results. If your plan allows longer functions, raise both. Chromium wants about 1.5 GB of memory; Vercel's default function memory is enough.
 
@@ -39,7 +62,12 @@ Locally, the app uses `CHROME_EXECUTABLE_PATH` or the first Chrome/Chromium it f
 | Variable                 | Purpose                                                                                                       |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`           | Neon connection string. Without it runs still work, but nothing is saved and images are inlined as data URLs. |
-| `NAVPROBE_API_KEY`       | If set, API calls need `Authorization: Bearer <key>` or `x-api-key: <key>`. The UI asks for it.               |
+| `GOOGLE_CLIENT_ID`       | Google OAuth client ID (required in production).                                                              |
+| `GOOGLE_CLIENT_SECRET`   | Google OAuth client secret (required in production).                                                          |
+| `BETTER_AUTH_SECRET`     | Secret that signs sessions: `openssl rand -base64 32` (required in production).                               |
+| `BETTER_AUTH_URL`        | Public URL of the app. Defaults to Vercel's production URL, or the request origin.                            |
+| `ALLOWED_EMAIL_DOMAINS`  | Comma-separated email domains allowed to sign in (default `launchfa.st,neon.com`).                            |
+| `NAVPROBE_API_KEY`       | Lets programmatic clients call the API with `Authorization: Bearer <key>` or `x-api-key: <key>`.              |
 | `MAX_RUN_SECONDS`        | Hard cap per run (default 270). Keep it below the route's `maxDuration`.                                      |
 | `ALLOW_PRIVATE_NETWORKS` | `true` allows localhost and private IPs as targets (always allowed in `next dev`).                            |
 | `CHROME_EXECUTABLE_PATH` | Local Chrome/Chromium binary to use instead of auto-detection.                                                |
@@ -97,13 +125,14 @@ When a database is configured, screenshots and frames come back as `/api/assets/
 
 ### Other endpoints
 
-| Method & path          | Description                                                                                  |
-| ---------------------- | -------------------------------------------------------------------------------------------- |
-| `GET /api/runs`        | Recent runs (`?limit=20&before=<ISO date>&url=<exact url>`), with the initial load's vitals. |
-| `GET /api/runs/:id`    | The full stored run: steps, navigations, requests, console and the original input.           |
-| `DELETE /api/runs/:id` | Deletes a run and its images.                                                                |
-| `GET /api/assets/:id`  | A stored screenshot or frame (public, immutable, unguessable id).                            |
-| `GET /api/health`      | Whether auth is required, whether persistence is on, limits, and the accepted enum values.   |
+| Method & path          | Description                                                                                             |
+| ---------------------- | ------------------------------------------------------------------------------------------------------- |
+| `GET /api/runs`        | Recent runs (`?limit=20&before=<ISO date>&url=<exact url>&mine=1`), with the initial load's vitals.     |
+| `GET /api/runs/:id`    | The full stored run: steps, navigations, requests, console, the original input and who started it.      |
+| `DELETE /api/runs/:id` | Deletes a run and its images (creator or API key only).                                                 |
+| `GET /api/assets/:id`  | A stored screenshot or frame (same auth as the rest of the API).                                        |
+| `GET /api/health`      | Public. Auth mode and allowed domains, whether persistence is on, limits, and the accepted enum values. |
+| `/api/auth/*`          | Better Auth endpoints (Google sign-in, session, sign-out).                                              |
 
 ## How navigations are measured
 
@@ -121,7 +150,8 @@ Things to know:
 
 ## Security notes
 
-- Set `NAVPROBE_API_KEY` on public deployments.
+- Every page and API route needs a signed-in user from an allowed domain, or the API key. In production, missing auth configuration fails closed.
+- Treat `NAVPROBE_API_KEY` like a password: it grants full API access, including deleting any run.
 - Navigation targets (`url` and `navigate` steps) must resolve to public IPs unless `ALLOW_PRIVATE_NETWORKS=true`. This check only covers what you ask the browser to open. A page (or your script) can still request other hosts, and redirects are followed.
 - Scripts run inside the target page, never on the server.
 
@@ -131,7 +161,7 @@ Things to know:
 npm run dev            # Next.js dev server
 npm run typecheck      # route types + tsc
 npm run format         # Prettier (organize-imports + tailwind class sorting)
-npm run db:generate    # new migration after editing src/db/schema.ts
+npm run db:generate    # new migration after editing src/db/schema.ts or src/db/auth-schema.ts
 npm run db:migrate     # apply migrations
 npm run db:studio      # browse the database
 ```

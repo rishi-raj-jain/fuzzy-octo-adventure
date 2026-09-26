@@ -29,7 +29,7 @@ export function VitalCell({ name, value }: { name: keyof Vitals; value?: number 
 export function NavigationCard({ nav, index }: { nav: NavigationRecord; index: number }) {
   const keys = nav.kind === 'hard' ? HARD_KEYS : SOFT_KEYS
   return (
-    <div className="rounded-lg border bg-card">
+    <div className="@container min-w-0 rounded-lg border bg-card">
       <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2.5">
         <span className="font-mono text-xs text-muted-foreground">#{index + 1}</span>
         {nav.kind === 'hard' ? (
@@ -41,15 +41,15 @@ export function NavigationCard({ nav, index }: { nav: NavigationRecord; index: n
             <ArrowRightLeft /> Soft navigation
           </Badge>
         )}
-        <a href={nav.url} target="_blank" rel="noreferrer" className="min-w-0 truncate text-sm font-medium hover:underline" title={nav.url}>
+        <a href={nav.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 basis-40 truncate text-sm font-medium hover:underline" title={nav.url}>
           {shortUrl(nav.url)}
         </a>
         {nav.httpStatus && nav.httpStatus >= 400 && <Badge variant="destructive">HTTP {nav.httpStatus}</Badge>}
-        <span className="ml-auto text-xs text-muted-foreground">
+        <span className="text-xs whitespace-nowrap text-muted-foreground @md:ml-auto">
           step {nav.stepIndex + 1} · +{formatMs(nav.startedAt)}
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-1.5 p-3 sm:grid-cols-4 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-1.5 p-3 @sm:grid-cols-3 @xl:grid-cols-4 @3xl:grid-cols-5">
         {keys.map((k) => (
           <VitalCell key={k} name={k} value={nav.vitals[k]} />
         ))}
@@ -60,12 +60,12 @@ export function NavigationCard({ nav, index }: { nav: NavigationRecord; index: n
           {nav.kind === 'soft' && nav.urlChangeAt !== undefined && <> · URL changed after {formatMs(nav.urlChangeAt)}</>}
         </div>
         {nav.lcpElement && (
-          <div className="truncate" title={nav.lcpElement}>
+          <div className="break-all @md:truncate @md:break-normal" title={nav.lcpElement}>
             <span className="text-foreground">LCP element:</span> <code className="font-mono">{nav.lcpElement}</code>
           </div>
         )}
         {nav.inpTarget && (
-          <div className="truncate" title={nav.inpTarget}>
+          <div className="break-all @md:truncate @md:break-normal" title={nav.inpTarget}>
             <span className="text-foreground">Slowest interaction:</span> <code className="font-mono">{nav.inpTarget}</code>
           </div>
         )}

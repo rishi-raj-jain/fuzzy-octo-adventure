@@ -11,6 +11,8 @@ export const runs = pgTable(
     finalUrl: text('final_url'),
     title: text('title'),
     status: text('status', { enum: ['running', 'ok', 'error', 'timeout', 'aborted'] }).notNull(),
+    /** Email of the signed-in user, or "api-key" for programmatic runs. */
+    createdBy: text('created_by'),
     error: text('error'),
     durationMs: integer('duration_ms'),
     browserVersion: text('browser_version'),
@@ -24,7 +26,7 @@ export const runs = pgTable(
     requests: jsonb('requests').$type<RequestEntry[]>(),
     console: jsonb('console').$type<ConsoleEntry[]>(),
   },
-  (t) => [index('runs_created_at_idx').on(t.createdAt), index('runs_url_idx').on(t.url)],
+  (t) => [index('runs_created_at_idx').on(t.createdAt), index('runs_url_idx').on(t.url), index('runs_created_by_idx').on(t.createdBy)],
 )
 
 /** One row per hard (document) or soft (same-document) navigation, so vitals can be queried over time. */

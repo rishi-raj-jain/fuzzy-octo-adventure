@@ -25,7 +25,7 @@ const SELECTOR_HINT = 'CSS selector, or Puppeteer syntax like ::-p-text(Sign in)
 
 function Field({ label, htmlFor, children, hint }: { label: string; htmlFor: string; children: React.ReactNode; hint?: string }) {
   return (
-    <div className="grid gap-1.5">
+    <div className="grid min-w-0 gap-1.5 *:min-w-0">
       <Label htmlFor={htmlFor} className="text-xs text-muted-foreground">
         {label}
       </Label>
@@ -55,31 +55,31 @@ export function StepEditor({
   const set = (patch: Partial<DraftStep>) => onChange({ ...step, ...patch } as DraftStep)
 
   return (
-    <div className="group/step relative rounded-lg border bg-card p-3">
-      <div className="flex items-center gap-2">
+    <div className="group/step relative min-w-0 rounded-lg border bg-card p-3">
+      <div className="flex min-w-0 items-center gap-2">
         <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted font-mono text-xs text-muted-foreground">{index + 2}</span>
         <Icon className="size-4 shrink-0 text-muted-foreground" />
         <SimpleSelect
           size="sm"
-          className="h-7 w-auto min-w-40 border-none bg-transparent px-1 font-medium shadow-none dark:bg-transparent"
+          className="h-7 w-auto min-w-0 border-none bg-transparent px-1 font-medium shadow-none sm:min-w-40 dark:bg-transparent pointer-coarse:h-9"
           value={step.type}
           options={STEP_LABELS}
           onChange={(type) => onChange({ ...newStep(type), id: step.id })}
         />
-        <div className="ml-auto flex items-center gap-0.5 opacity-60 transition-opacity group-hover/step:opacity-100">
-          <Button variant="ghost" size="icon-xs" aria-label="Move up" disabled={index === 0} onClick={() => onMove(-1)}>
+        <div className="ml-auto flex shrink-0 items-center gap-0.5 transition-opacity pointer-fine:opacity-60 pointer-fine:group-focus-within/step:opacity-100 pointer-fine:group-hover/step:opacity-100">
+          <Button type="button" variant="ghost" size="icon-xs" className="pointer-coarse:size-9" aria-label="Move up" disabled={index === 0} onClick={() => onMove(-1)}>
             <ArrowUp />
           </Button>
-          <Button variant="ghost" size="icon-xs" aria-label="Move down" disabled={index === total - 1} onClick={() => onMove(1)}>
+          <Button type="button" variant="ghost" size="icon-xs" className="pointer-coarse:size-9" aria-label="Move down" disabled={index === total - 1} onClick={() => onMove(1)}>
             <ArrowDown />
           </Button>
-          <Button variant="ghost" size="icon-xs" aria-label="Remove step" onClick={onRemove}>
+          <Button type="button" variant="ghost" size="icon-xs" className="pointer-coarse:size-9" aria-label="Remove step" onClick={onRemove}>
             <Trash2 />
           </Button>
         </div>
       </div>
 
-      <div className="mt-3 grid gap-3">
+      <div className="mt-3 grid gap-3 *:min-w-0">
         {step.type === 'wait' && (
           <Field label="Seconds to wait" htmlFor={fid('seconds')}>
             <Input id={fid('seconds')} type="number" min={0} max={120} step={0.5} value={step.seconds} onChange={(e) => set({ seconds: Number(e.target.value) })} />
@@ -96,18 +96,18 @@ export function StepEditor({
           <Field label="JavaScript to run in the page" htmlFor={fid('script')} hint="Runs in the page like the DevTools console. Top-level await is allowed; the last expression or a `return` value is captured.">
             <div className="flex flex-wrap gap-1">
               {SCRIPT_PRESETS.map((preset) => (
-                <Button key={preset.label} variant="outline" size="xs" onClick={() => set({ script: preset.script })}>
+                <Button key={preset.label} type="button" variant="outline" size="xs" className="pointer-coarse:h-8 pointer-coarse:px-2.5" onClick={() => set({ script: preset.script })}>
                   {preset.label}
                 </Button>
               ))}
             </div>
-            <Textarea id={fid('script')} spellCheck={false} className="min-h-24 font-mono text-xs" value={step.script} onChange={(e) => set({ script: e.target.value })} />
+            <Textarea id={fid('script')} spellCheck={false} className="min-h-24 font-mono md:text-xs" value={step.script} onChange={(e) => set({ script: e.target.value })} />
           </Field>
         )}
 
         {(step.type === 'click' || step.type === 'type' || step.type === 'waitForSelector') && (
           <Field label="Selector" htmlFor={fid('selector')} hint={SELECTOR_HINT}>
-            <Input id={fid('selector')} className="font-mono text-xs" placeholder="a[href='/pricing']" value={step.selector} onChange={(e) => set({ selector: e.target.value })} />
+            <Input id={fid('selector')} className="font-mono md:text-xs" placeholder="a[href='/pricing']" value={step.selector} onChange={(e) => set({ selector: e.target.value })} />
           </Field>
         )}
 

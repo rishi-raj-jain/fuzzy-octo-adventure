@@ -1,6 +1,6 @@
 'use client'
 
-import { apiHeaders } from '@/hooks/use-api-key'
+import { apiFetch } from '@/lib/api-client'
 import type { NavigationRecord, RunEvent, RunRequest, RunSummary, StepResult } from '@/lib/scenario/schema'
 import { useCallback, useRef, useState } from 'react'
 
@@ -22,7 +22,7 @@ export function useRun() {
   const [run, setRun] = useState<LiveRun | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  const start = useCallback(async (request: RunRequest, apiKey: string) => {
+  const start = useCallback(async (request: RunRequest) => {
     abortRef.current?.abort()
     const abort = new AbortController()
     abortRef.current = abort
@@ -50,9 +50,9 @@ export function useRun() {
       })
 
     try {
-      const res = await fetch('/api/runs?stream=1', {
+      const res = await apiFetch('/api/runs?stream=1', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/x-ndjson', ...apiHeaders(apiKey) },
+        headers: { 'content-type': 'application/json', accept: 'application/x-ndjson' },
         body: JSON.stringify(request),
         signal: abort.signal,
       })

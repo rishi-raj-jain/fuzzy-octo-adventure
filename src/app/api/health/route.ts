@@ -1,5 +1,7 @@
 import { hasDatabase } from '@/db'
-import { authRequired } from '@/lib/api'
+import { apiKeyEnabled } from '@/lib/api'
+import { allowedDomains } from '@/lib/auth/domains'
+import { authMode } from '@/lib/auth/server'
 import { MAX_RUN_MS } from '@/lib/scenario/runner'
 import { DEVICES, MAX_STEPS, MAX_WAIT_SECONDS, NETWORKS, WAIT_UNTIL } from '@/lib/scenario/schema'
 
@@ -9,7 +11,7 @@ export const dynamic = 'force-dynamic'
 export function GET() {
   return Response.json({
     ok: true,
-    authRequired: authRequired(),
+    auth: { mode: authMode(), provider: 'google', allowedDomains: allowedDomains(), apiKey: apiKeyEnabled() },
     persistence: hasDatabase(),
     limits: { maxRunSeconds: MAX_RUN_MS / 1000, maxSteps: MAX_STEPS, maxWaitSeconds: MAX_WAIT_SECONDS },
     devices: Object.keys(DEVICES),

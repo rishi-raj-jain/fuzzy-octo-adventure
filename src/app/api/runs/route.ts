@@ -1,5 +1,5 @@
 import { hasDatabase } from '@/db'
-import { checkAuth, jsonError } from '@/lib/api'
+import { isDenied, jsonError, requireAccess } from '@/lib/api'
 import { assertPublicUrl } from '@/lib/scenario/guard'
 import { inlineAssets, runScenario } from '@/lib/scenario/runner'
 import { runInputSchema, type RunEvent, type RunSummary } from '@/lib/scenario/schema'
@@ -15,8 +15,8 @@ export const maxDuration = 300
  * - NDJSON progress stream with `?stream=1` or `Accept: application/x-ndjson`.
  */
 export async function POST(req: Request) {
-  const unauthorized = checkAuth(req)
-  if (unauthorized) return unauthorized
+  const access = await requireAccess(req)
+  if (isDenied(access)) return access
 
   const body = await req.json().catch(() => undefined)
   const parsed = runInputSchema.safeParse(body)
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
   let persist = hasDatabase()
   if (persist) {
     try {
-      await createRun(id, body, input)
+      await createRun(id, body, input, access.actor)
     } catch (e) {
       console.error('[navprobe] could not create run record, continuing without persistence', e)
       persist = false
@@ -41,6 +41,7 @@ export async function POST(req: Request) {
 
   const execute = async (emit: (e: RunEvent) => void, signal: AbortSignal) => {
     const run: RunSummary = await runScenario(input, { id, emit, signal, assets: persist ? dbAssetSink(id) : inlineAssets })
+    run.createdBy = access.actor
     if (persist) {
       try {
         await finishRun(run)
@@ -102,10 +103,15 @@ export async function POST(req: Request) {
 
 /** List recent runs: `?limit=20&before=<ISO date>&url=<exact url>` */
 export async function GET(req: Request) {
-  const unauthorized = checkAuth(req)
-  if (unauthorized) return unauthorized
+  const access = await requireAccess(req)
+  if (isDenied(access)) return access
   if (!hasDatabase()) return Response.json({ runs: [], persistence: false })
   const params = new URL(req.url).searchParams
-  const result = await listRuns({ limit: Number(params.get('limit') ?? 20) || 20, before: params.get('before') ?? undefined, url: params.get('url') ?? undefined })
+  const result = await listRuns({
+    limit: Number(params.get('limit') ?? 20) || 20,
+    before: params.get('before') ?? undefined,
+    url: params.get('url') ?? undefined,
+    createdBy: params.get('mine') === '1' ? access.actor : undefined,
+  })
   return Response.json({ ...result, persistence: true })
 }

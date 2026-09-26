@@ -3,7 +3,7 @@
 import { STEP_ICONS, StepEditor } from '@/components/scenario/step-editor'
 import { SimpleSelect } from '@/components/simple-select'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
@@ -23,8 +23,10 @@ function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) 
   const [copied, setCopied] = useState(false)
   return (
     <Button
+      type="button"
       variant="outline"
       size="xs"
+      className="pointer-coarse:h-8 pointer-coarse:px-3"
       onClick={async () => {
         await navigator.clipboard.writeText(text)
         setCopied(true)
@@ -43,18 +45,14 @@ export function ScenarioBuilder({
   onRun,
   onCancel,
   running,
-  authRequired,
-  apiKey,
-  onApiKeyChange,
+  apiKeyEnabled,
 }: {
   draft: Draft
   onChange: (draft: Draft) => void
   onRun: () => void
   onCancel: () => void
   running: boolean
-  authRequired: boolean
-  apiKey: string
-  onApiKeyChange: (key: string) => void
+  apiKeyEnabled: boolean
 }) {
   const [headersText, setHeadersText] = useState(() =>
     Object.entries(draft.options.headers ?? {})
@@ -74,60 +72,56 @@ export function ScenarioBuilder({
   const totalWait = draft.steps.reduce((sum, s) => sum + (s.type === 'wait' ? s.seconds || 0 : 0), 0)
   const requestJson = useMemo(() => JSON.stringify(toRequest(draft), null, 2), [draft])
   const origin = typeof window === 'undefined' ? 'https://your-app.vercel.app' : window.location.origin
-  const curl = `curl -X POST ${origin}/api/runs \\\n  -H 'content-type: application/json' \\\n${authRequired ? `  -H 'authorization: Bearer $NAVPROBE_API_KEY' \\\n` : ''}  -d '${JSON.stringify(toRequest(draft)).replace(/'/g, `'\\''`)}'`
+  const curl = `curl -X POST ${origin}/api/runs \\\n  -H 'content-type: application/json' \\\n  -H "authorization: Bearer $NAVPROBE_API_KEY" \\\n  -d '${JSON.stringify(toRequest(draft)).replace(/'/g, `'\\''`)}'`
 
   return (
-    <Card className="gap-0 py-0">
-      <CardHeader className="border-b py-4">
-        <CardTitle>Scenario</CardTitle>
-        <CardDescription>Load a page, wait, run code in it, and measure every navigation that follows.</CardDescription>
-      </CardHeader>
+    <form
+      noValidate
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (!running) onRun()
+      }}
+    >
+      {/* overflow-visible so the action bar can stick to the bottom of the viewport / scroll area. */}
+      <Card className="gap-0 overflow-visible py-0">
+        <CardHeader className="border-b py-4">
+          <CardTitle>Scenario</CardTitle>
+          <CardDescription>Load a page, wait, run code in it, and measure every navigation that follows.</CardDescription>
+        </CardHeader>
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          if (!running) onRun()
-        }}
-      >
-        <CardContent className="grid gap-4 py-4">
+        <div className="grid gap-4 px-4 py-4 *:min-w-0">
           <div className="grid gap-1.5">
             <Label htmlFor="url">Page URL</Label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Globe className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input id="url" className="h-9 pl-8" placeholder="https://example.com" value={draft.url} onChange={(e) => onChange({ ...draft, url: e.target.value })} autoComplete="url" />
-              </div>
-              {running ? (
-                <Button type="button" variant="destructive" size="lg" onClick={onCancel}>
-                  <Square /> Stop
-                </Button>
-              ) : (
-                <Button type="submit" size="lg" disabled={!draft.url.trim()}>
-                  <Play /> Run
-                </Button>
-              )}
+            <div className="relative">
+              <Globe className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="url"
+                type="url"
+                inputMode="url"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                className="h-10 pl-8 sm:h-9"
+                placeholder="https://example.com"
+                value={draft.url}
+                onChange={(e) => onChange({ ...draft, url: e.target.value })}
+                autoComplete="url"
+              />
             </div>
           </div>
 
-          {authRequired && (
-            <div className="grid gap-1.5">
-              <Label htmlFor="api-key">API key</Label>
-              <Input id="api-key" type="password" placeholder="Required by this deployment" value={apiKey} onChange={(e) => onApiKeyChange(e.target.value)} />
-            </div>
-          )}
-
           <Tabs defaultValue="steps">
-            <TabsList className="w-full">
+            <TabsList className="w-full pointer-coarse:h-10">
               <TabsTrigger value="steps">Steps</TabsTrigger>
               <TabsTrigger value="options">Emulation</TabsTrigger>
               <TabsTrigger value="api">API</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="steps" className="grid gap-2 pt-2">
+            <TabsContent value="steps" className="grid min-w-0 gap-2 pt-2 *:min-w-0">
               <div className="flex items-center gap-2 rounded-lg border border-dashed p-3 text-sm">
                 <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted font-mono text-xs text-muted-foreground">1</span>
-                <Globe className="size-4 text-muted-foreground" />
-                <span className="font-medium">Load the page</span>
+                <Globe className="size-4 shrink-0 text-muted-foreground" />
+                <span className="font-medium whitespace-nowrap">Load the page</span>
                 <span className="ml-auto truncate text-xs text-muted-foreground">waits for {WAIT_UNTIL[draft.options.waitUntil]}</span>
               </div>
               {draft.steps.map((step, i) => (
@@ -145,33 +139,30 @@ export function ScenarioBuilder({
                 <p className="text-xs text-muted-foreground">
                   <Plus className="inline size-3" /> Add a step {draft.steps.length >= MAX_STEPS && `(max ${MAX_STEPS})`}
                 </p>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap">
                   {(Object.keys(STEP_LABELS) as StepType[]).map((type) => {
                     const Icon = STEP_ICONS[type]
                     return (
-                      <Button key={type} type="button" variant="outline" size="sm" disabled={draft.steps.length >= MAX_STEPS} onClick={() => addStep(type)}>
-                        <Icon /> {STEP_LABELS[type]}
+                      <Button key={type} type="button" variant="outline" size="sm" className="justify-start pointer-coarse:h-10" disabled={draft.steps.length >= MAX_STEPS} onClick={() => addStep(type)}>
+                        <Icon /> <span className="truncate">{STEP_LABELS[type]}</span>
                       </Button>
                     )
                   })}
                 </div>
               </div>
-              <p className="pt-1 text-xs text-muted-foreground">
-                {draft.steps.length + 1} steps · {totalWait}s of fixed waits
-              </p>
             </TabsContent>
 
             <TabsContent value="options" className="grid gap-4 pt-2">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="grid gap-1.5">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                <div className="grid min-w-0 gap-1.5">
                   <Label htmlFor="device">Device</Label>
                   <SimpleSelect id="device" value={draft.options.device} options={DEVICE_LABELS} onChange={(device) => setOptions({ device })} />
                 </div>
-                <div className="grid gap-1.5">
+                <div className="grid min-w-0 gap-1.5">
                   <Label htmlFor="network">Network</Label>
                   <SimpleSelect id="network" value={draft.options.network} options={NETWORKS} onChange={(network) => setOptions({ network })} />
                 </div>
-                <div className="grid gap-1.5">
+                <div className="grid min-w-0 gap-1.5">
                   <Label htmlFor="cpu">CPU</Label>
                   <SimpleSelect
                     id="cpu"
@@ -180,13 +171,13 @@ export function ScenarioBuilder({
                     onChange={(v) => setOptions({ cpuThrottle: Number(v) })}
                   />
                 </div>
-                <div className="grid gap-1.5">
+                <div className="grid min-w-0 gap-1.5">
                   <Label htmlFor="wait-until">Initial load is done at</Label>
                   <SimpleSelect id="wait-until" value={draft.options.waitUntil} options={WAIT_UNTIL} onChange={(waitUntil) => setOptions({ waitUntil })} />
                 </div>
               </div>
               <Separator />
-              <div className="grid gap-3">
+              <div className="grid gap-1">
                 {(
                   [
                     ['screenshots', 'Screenshot after every step'],
@@ -194,12 +185,10 @@ export function ScenarioBuilder({
                     ['continueOnError', 'Keep going when a step fails'],
                   ] as const
                 ).map(([key, label]) => (
-                  <div key={key} className="flex items-center justify-between gap-2">
-                    <Label htmlFor={`opt-${key}`} className="font-normal">
-                      {label}
-                    </Label>
+                  <Label key={key} htmlFor={`opt-${key}`} className="flex min-h-9 cursor-pointer items-center justify-between gap-3 font-normal pointer-coarse:min-h-11">
+                    {label}
                     <Switch id={`opt-${key}`} checked={draft.options[key]} onCheckedChange={(checked) => setOptions({ [key]: checked })} />
-                  </div>
+                  </Label>
                 ))}
               </div>
               <Separator />
@@ -211,7 +200,8 @@ export function ScenarioBuilder({
                 <Label htmlFor="headers">Extra request headers</Label>
                 <Textarea
                   id="headers"
-                  className="min-h-16 font-mono text-xs"
+                  spellCheck={false}
+                  className="min-h-16 font-mono md:text-xs"
                   placeholder={'Cookie: session=abc\nX-Feature-Flag: on'}
                   value={headersText}
                   onChange={(e) => {
@@ -229,18 +219,19 @@ export function ScenarioBuilder({
               </div>
             </TabsContent>
 
-            <TabsContent value="api" className="grid gap-3 pt-2">
+            <TabsContent value="api" className="grid min-w-0 gap-3 pt-2">
               <p className="text-sm text-muted-foreground">
-                Everything here is plain HTTP. Add <code className="rounded bg-muted px-1 font-mono text-xs">?stream=1</code> for NDJSON progress events.
+                The same run over HTTP{apiKeyEnabled ? ' with your deployment’s API key' : ' (set NAVPROBE_API_KEY on the server to enable key access)'}. Add{' '}
+                <code className="rounded bg-muted px-1 font-mono text-xs">?stream=1</code> for NDJSON progress events.
               </p>
-              <div className="grid gap-1.5">
+              <div className="grid min-w-0 gap-1.5">
                 <div className="flex items-center justify-between">
                   <Label>cURL</Label>
                   <CopyButton text={curl} />
                 </div>
                 <pre className="max-h-64 overflow-auto rounded-lg bg-muted p-3 font-mono text-[11px] leading-relaxed">{curl}</pre>
               </div>
-              <div className="grid gap-1.5">
+              <div className="grid min-w-0 gap-1.5">
                 <div className="flex items-center justify-between">
                   <Label>Request body</Label>
                   <CopyButton text={requestJson} />
@@ -249,28 +240,43 @@ export function ScenarioBuilder({
               </div>
             </TabsContent>
           </Tabs>
-        </CardContent>
-      </form>
+        </div>
 
-      <div className="flex items-center gap-2 border-t px-4 py-3">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={async () => {
-            const link = `${window.location.origin}/#s=${encodeDraft(draft)}`
-            await navigator.clipboard.writeText(link)
-            toast.success('Scenario link copied')
-          }}
-        >
-          <Link2 /> Share scenario
-        </Button>
-        {running && (
-          <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Loader2 className="size-3.5 animate-spin" /> Running in a remote browser…
+        {/* Action bar: always reachable, whether the page or the builder column is scrolling. */}
+        <div className="sticky bottom-0 z-10 flex items-center gap-2 rounded-b-xl border-t bg-card/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur supports-[backdrop-filter]:bg-card/80">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="pointer-coarse:h-10"
+            aria-label="Copy a link to this scenario"
+            onClick={async () => {
+              await navigator.clipboard.writeText(`${window.location.origin}/#s=${encodeDraft(draft)}`)
+              toast.success('Scenario link copied')
+            }}
+          >
+            <Link2 /> <span className="hidden min-[400px]:inline">Share</span>
+          </Button>
+          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            {running ? (
+              <span className="flex items-center gap-1.5">
+                <Loader2 className="size-3.5 shrink-0 animate-spin" /> Running remotely…
+              </span>
+            ) : (
+              `${draft.steps.length + 1} steps · ${totalWait}s of waits`
+            )}
           </span>
-        )}
-      </div>
-    </Card>
+          {running ? (
+            <Button type="button" variant="destructive" size="lg" className="h-10 min-w-24 sm:h-9" onClick={onCancel}>
+              <Square /> Stop
+            </Button>
+          ) : (
+            <Button type="submit" size="lg" className="h-10 min-w-24 sm:h-9" disabled={!draft.url.trim()}>
+              <Play /> Run
+            </Button>
+          )}
+        </div>
+      </Card>
+    </form>
   )
 }

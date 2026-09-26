@@ -251,6 +251,8 @@ export interface RunSummary {
   console: ConsoleEntry[]
   totals: { requests: number; bytes: number; failedRequests: number; navigations: number; hardNavigations: number; softNavigations: number }
   persisted: boolean
+  /** Email of the user who started the run, or "api-key". */
+  createdBy?: string
 }
 
 export type RunEvent =

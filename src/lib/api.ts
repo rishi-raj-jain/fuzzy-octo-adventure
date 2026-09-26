@@ -1,16 +1,41 @@
+import { authMode, getViewer, type Viewer } from '@/lib/auth/server'
 import { timingSafeEqual } from 'node:crypto'
 
-export const authRequired = () => Boolean(process.env.NAVPROBE_API_KEY)
+export const jsonError = (error: string, status: number, extra?: object) => Response.json({ error, ...extra }, { status })
 
-/** Returns a 401 response when NAVPROBE_API_KEY is set and the request doesn't carry it. */
-export function checkAuth(req: Request): Response | null {
-  const key = process.env.NAVPROBE_API_KEY
-  if (!key) return null
-  const provided = req.headers.get('x-api-key') ?? req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? ''
-  const a = Buffer.from(provided)
-  const b = Buffer.from(key)
-  if (a.length === b.length && timingSafeEqual(a, b)) return null
-  return Response.json({ error: 'Unauthorized: pass the API key as `Authorization: Bearer <key>` or `x-api-key`.' }, { status: 401 })
+export const apiKeyEnabled = () => Boolean(process.env.NAVPROBE_API_KEY)
+
+export type Access = { kind: 'user'; viewer: Viewer; actor: string } | { kind: 'api-key'; actor: 'api-key' }
+
+function providedKey(req: Request) {
+  return req.headers.get('x-api-key') ?? req.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1] ?? null
 }
 
-export const jsonError = (error: string, status: number, extra?: object) => Response.json({ error, ...extra }, { status })
+function keyMatches(provided: string) {
+  const key = process.env.NAVPROBE_API_KEY
+  if (!key) return false
+  const a = Buffer.from(provided)
+  const b = Buffer.from(key)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
+/**
+ * Every API route calls this. Access is granted to:
+ *  - programmatic clients carrying NAVPROBE_API_KEY (`Authorization: Bearer <key>` or `x-api-key`), or
+ *  - signed-in users whose Google account is on an allowed domain (session cookie).
+ * Returns a Response to send back when access is denied.
+ */
+export async function requireAccess(req: Request): Promise<Access | Response> {
+  const key = providedKey(req)
+  if (key !== null) {
+    return keyMatches(key) ? { kind: 'api-key', actor: 'api-key' } : jsonError('Invalid API key', 401)
+  }
+  if (authMode() === 'misconfigured') {
+    return jsonError('Sign-in is not configured on this deployment (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, BETTER_AUTH_SECRET and DATABASE_URL are required).', 503)
+  }
+  const viewer = await getViewer(req.headers)
+  if (!viewer) return jsonError('Sign in with an allowed Google account, or pass an API key as `Authorization: Bearer <key>`.', 401)
+  return { kind: 'user', viewer, actor: viewer.email }
+}
+
+export const isDenied = (access: Access | Response): access is Response => access instanceof Response

@@ -4,14 +4,14 @@ import { RunHistory } from '@/components/run-history'
 import { RunView } from '@/components/run/run-view'
 import { ScenarioBuilder } from '@/components/scenario/scenario-builder'
 import { Card, CardContent } from '@/components/ui/card'
-import { useApiKey } from '@/hooks/use-api-key'
 import { useHealth } from '@/hooks/use-health'
 import { useRun } from '@/hooks/use-run'
+import { apiFetch } from '@/lib/api-client'
 import { decodeDraft, defaultDraft, fromRequest, toRequest, type Draft } from '@/lib/draft'
 import { runInputSchema } from '@/lib/scenario/schema'
 import { Activity, Film, Gauge, MousePointerClick } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 const STORAGE_KEY = 'navprobe:draft'
@@ -38,7 +38,7 @@ function EmptyState() {
   ]
   return (
     <Card className="border-dashed bg-transparent shadow-none">
-      <CardContent className="grid gap-6 py-6">
+      <CardContent className="grid gap-5 py-5 sm:gap-6 sm:py-6">
         <div className="grid gap-1">
           <h2 className="flex items-center gap-2 font-medium">
             <Activity className="size-4" /> Test how navigation feels on any site
@@ -62,10 +62,10 @@ function EmptyState() {
 export function NavProbeApp() {
   const [draft, setDraft] = useState<Draft>(defaultDraft)
   const [hydrated, setHydrated] = useState(false)
-  const [apiKey, setApiKey] = useApiKey()
   const health = useHealth()
   const { run, start, cancel } = useRun()
   const [historyKey, setHistoryKey] = useState(0)
+  const resultsRef = useRef<HTMLDivElement>(null)
   const searchParams = useSearchParams()
   const fromRun = searchParams.get('from')
 
@@ -78,11 +78,11 @@ export function NavProbeApp() {
   // "Edit & re-run" from a stored run.
   useEffect(() => {
     if (!fromRun) return
-    fetch(`/api/runs/${fromRun}`, { headers: apiKey ? { authorization: `Bearer ${apiKey}` } : {} })
+    apiFetch(`/api/runs/${fromRun}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((r) => setDraft(fromRequest(r.input)))
       .catch(() => toast.error('Could not load that run'))
-  }, [fromRun, apiKey])
+  }, [fromRun])
 
   useEffect(() => {
     if (!hydrated) return
@@ -105,22 +105,27 @@ export function NavProbeApp() {
       return
     }
     if (window.location.hash) history.replaceState(null, '', window.location.pathname)
-    void start(request, apiKey)
+    void start(request)
+    // Single-column layouts: bring the live results into view.
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      requestAnimationFrame(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    }
   }
 
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,460px)_minmax(0,1fr)]">
-      <div className="lg:sticky lg:top-6">
-        <ScenarioBuilder draft={draft} onChange={setDraft} onRun={onRun} onCancel={cancel} running={Boolean(run?.running)} authRequired={Boolean(health?.authRequired)} apiKey={apiKey} onApiKeyChange={setApiKey} />
+    <div className="grid grid-cols-1 items-start gap-4 sm:gap-6 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] xl:grid-cols-[minmax(0,460px)_minmax(0,1fr)]">
+      {/* On large screens the builder scrolls independently so the Run button never leaves the viewport. */}
+      <div className="[scrollbar-width:thin] lg:sticky lg:top-20 lg:-m-1 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto lg:overscroll-contain lg:p-1">
+        <ScenarioBuilder draft={draft} onChange={setDraft} onRun={onRun} onCancel={cancel} running={Boolean(run?.running)} apiKeyEnabled={health?.auth.apiKey ?? false} />
         {health && (
           <p className="mt-2 px-1 text-[11px] text-muted-foreground">
             Runs are limited to {health.limits.maxRunSeconds}s and {health.limits.maxSteps} steps.
           </p>
         )}
       </div>
-      <div className="grid gap-6">
+      <div ref={resultsRef} className="grid min-w-0 scroll-mt-20 gap-4 sm:gap-6">
         {run ? <RunView run={run} /> : <EmptyState />}
-        <RunHistory apiKey={apiKey} refreshKey={historyKey} persistence={health?.persistence ?? false} />
+        <RunHistory refreshKey={historyKey} persistence={health?.persistence ?? false} authMode={health?.auth.mode} />
       </div>
     </div>
   )

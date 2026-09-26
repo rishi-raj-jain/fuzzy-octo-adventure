@@ -6,7 +6,7 @@ import { StepsPanel, StepTimeline } from '@/components/run/steps-panel'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { LiveRun } from '@/hooks/use-run'
 import { formatBytes, formatMs, shortUrl } from '@/lib/format'
@@ -28,9 +28,11 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
 
 function Stat({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="grid gap-0.5">
+    <div className="grid min-w-0 gap-0.5">
       <span className="text-[11px] text-muted-foreground">{label}</span>
-      <span className={cn('text-sm font-medium tabular-nums', mono && 'font-mono')}>{value}</span>
+      <span className={cn('truncate text-sm font-medium tabular-nums', mono && 'font-mono')} title={value}>
+        {value}
+      </span>
     </div>
   )
 }
@@ -53,33 +55,35 @@ export function RunView({ run, showPermalink = true }: { run: LiveRun; showPerma
   }
 
   return (
-    <div className="grid gap-4">
+    <div className="grid min-w-0 gap-4">
       <Card>
-        <CardHeader>
-          <CardTitle className="flex min-w-0 items-center gap-2">
-            {run.running ? <Loader2 className="size-4 shrink-0 animate-spin text-primary" /> : status && <Badge className={status.className}>{status.label}</Badge>}
-            <span className="truncate" title={run.url}>
-              {result?.title || shortUrl(run.url)}
-            </span>
-          </CardTitle>
-          <CardDescription className="truncate">
-            {shortUrl(run.url)}
-            {result?.finalUrl && result.finalUrl !== run.url && <> → {shortUrl(result.finalUrl)}</>}
-          </CardDescription>
-          <CardAction className="flex gap-1.5">
-            {result?.persisted && showPermalink && (
-              <Link href={`/runs/${result.id}`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-                <ExternalLink /> Permalink
-              </Link>
-            )}
-            {result && (
-              <button type="button" onClick={download} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+        <CardHeader className="flex flex-wrap items-start gap-x-4 gap-y-3">
+          <div className="grid min-w-0 flex-1 basis-60 gap-1">
+            <CardTitle className="flex min-w-0 items-center gap-2">
+              {run.running ? <Loader2 className="size-4 shrink-0 animate-spin text-primary" /> : status && <Badge className={cn('shrink-0', status.className)}>{status.label}</Badge>}
+              <span className="truncate" title={run.url}>
+                {result?.title || shortUrl(run.url)}
+              </span>
+            </CardTitle>
+            <CardDescription className="truncate" title={result?.finalUrl ?? run.url}>
+              {shortUrl(run.url)}
+              {result?.finalUrl && result.finalUrl !== run.url && <> → {shortUrl(result.finalUrl)}</>}
+            </CardDescription>
+          </div>
+          {result && (
+            <div className="flex shrink-0 gap-1.5">
+              {result.persisted && showPermalink && (
+                <Link href={`/runs/${result.id}`} className={buttonVariants({ variant: 'outline', size: 'sm', className: 'pointer-coarse:h-9' })}>
+                  <ExternalLink /> Permalink
+                </Link>
+              )}
+              <button type="button" onClick={download} className={buttonVariants({ variant: 'outline', size: 'sm', className: 'pointer-coarse:h-9' })}>
                 <Download /> JSON
               </button>
-            )}
-          </CardAction>
+            </div>
+          )}
         </CardHeader>
-        <CardContent className="grid gap-4">
+        <CardContent className="@container grid gap-4">
           {(run.error || result?.error) && (
             <Alert variant="destructive">
               <AlertTriangle />
@@ -87,7 +91,7 @@ export function RunView({ run, showPermalink = true }: { run: LiveRun; showPerma
               <AlertDescription className="break-words">{result?.error ?? run.error}</AlertDescription>
             </Alert>
           )}
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 @md:grid-cols-3 @4xl:grid-cols-6">
             <Stat label="Duration" value={result ? formatMs(result.durationMs) : '…'} />
             <Stat mono={false} label="Navigations" value={`${hard} hard · ${soft} soft`} />
             <Stat label="Requests" value={result ? String(result.totals.requests) : String(run.steps.reduce((s, x) => s + x.metrics.requests, 0))} />
@@ -97,46 +101,50 @@ export function RunView({ run, showPermalink = true }: { run: LiveRun; showPerma
           </div>
           {run.running && run.plan.length > 0 && <StepTimeline plan={run.plan} steps={run.steps} activeStep={run.activeStep} />}
           {result?.browserVersion && (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[11px] break-words text-muted-foreground">
               {result.browserVersion} · started {new Date(result.startedAt).toLocaleString()}
+              {result.createdBy && <> · by {result.createdBy}</>}
             </p>
           )}
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="navigations">
-        <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
-          <TabsTrigger value="navigations">
-            Navigations <span className="text-muted-foreground">{run.navigations.length}</span>
-          </TabsTrigger>
-          <TabsTrigger value="steps">
-            Steps <span className="text-muted-foreground">{run.steps.length}</span>
-          </TabsTrigger>
-          <TabsTrigger value="filmstrip">Filmstrip</TabsTrigger>
-          <TabsTrigger value="waterfall">
-            Waterfall <span className="text-muted-foreground">{requests.length || ''}</span>
-          </TabsTrigger>
-          <TabsTrigger value="console">
-            Console <span className={cn('text-muted-foreground', result?.console.some((c) => c.level === 'error' || c.level === 'pageerror') && 'text-destructive')}>{result?.console.length || ''}</span>
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="navigations" className="pt-2">
+      <Tabs defaultValue="navigations" className="min-w-0">
+        {/* Tabs scroll sideways on narrow screens instead of wrapping or overflowing. */}
+        <div className="-mx-4 [scrollbar-width:none] overflow-x-auto px-4 sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
+          <TabsList className="w-max pointer-coarse:h-10">
+            <TabsTrigger value="navigations">
+              Navigations <span className="text-muted-foreground">{run.navigations.length}</span>
+            </TabsTrigger>
+            <TabsTrigger value="steps">
+              Steps <span className="text-muted-foreground">{run.steps.length}</span>
+            </TabsTrigger>
+            <TabsTrigger value="filmstrip">Filmstrip</TabsTrigger>
+            <TabsTrigger value="waterfall">
+              Waterfall <span className="text-muted-foreground">{requests.length || ''}</span>
+            </TabsTrigger>
+            <TabsTrigger value="console">
+              Console <span className={cn('text-muted-foreground', result?.console.some((c) => c.level === 'error' || c.level === 'pageerror') && 'text-destructive')}>{result?.console.length || ''}</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
+        <TabsContent value="navigations" className="min-w-0 pt-2">
           <NavigationsPanel navigations={run.navigations} running={run.running} />
         </TabsContent>
-        <TabsContent value="steps" className="pt-2">
+        <TabsContent value="steps" className="min-w-0 pt-2">
           <StepsPanel steps={run.steps} />
         </TabsContent>
-        <TabsContent value="filmstrip" className="pt-2">
+        <TabsContent value="filmstrip" className="min-w-0 pt-2">
           <FilmstripPanel steps={run.steps} navigations={run.navigations} />
         </TabsContent>
-        <TabsContent value="waterfall" className="pt-2">
+        <TabsContent value="waterfall" className="min-w-0 pt-2">
           {result ? (
             <WaterfallPanel requests={requests} steps={run.steps} navigations={run.navigations} />
           ) : (
             <p className="py-8 text-center text-sm text-muted-foreground">The waterfall is available when the run finishes.</p>
           )}
         </TabsContent>
-        <TabsContent value="console" className="pt-2">
+        <TabsContent value="console" className="min-w-0 pt-2">
           {result ? <ConsolePanel entries={result.console} /> : <p className="py-8 text-center text-sm text-muted-foreground">Console output is available when the run finishes.</p>}
         </TabsContent>
       </Tabs>

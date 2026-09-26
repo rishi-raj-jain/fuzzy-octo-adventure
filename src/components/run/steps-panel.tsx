@@ -49,24 +49,24 @@ export function StepsPanel({ steps }: { steps: StepResult[] }) {
       {steps.map((step) => {
         const Icon = STEP_ICONS[step.type]
         return (
-          <div key={step.index} className={cn('overflow-hidden rounded-lg border bg-card', step.status === 'error' && 'border-destructive/50')}>
-            <div className="flex items-center gap-2 border-b px-3 py-2.5">
+          <div key={step.index} className={cn('@container min-w-0 overflow-hidden rounded-lg border bg-card', step.status === 'error' && 'border-destructive/50')}>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-3 py-2.5">
               <StepStatusIcon status={step.status} />
               <span className="font-mono text-xs text-muted-foreground">{step.index + 1}</span>
               <Icon className="size-4 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate text-sm font-medium" title={step.summary}>
+              <span className="min-w-0 flex-1 basis-32 truncate text-sm font-medium" title={step.summary}>
                 {step.summary}
               </span>
-              <span className="font-mono text-xs text-muted-foreground tabular-nums">
+              <span className="ml-auto font-mono text-xs whitespace-nowrap text-muted-foreground tabular-nums">
                 +{formatMs(step.startedAt)} · {formatMs(step.durationMs)}
               </span>
             </div>
             {step.status !== 'skipped' && (
-              <div className="grid gap-3 p-3 md:grid-cols-[minmax(0,1fr)_220px]">
-                <div className="grid content-start gap-3">
+              <div className="grid gap-3 p-3 @2xl:grid-cols-[minmax(0,1fr)_240px]">
+                <div className="grid min-w-0 content-start gap-3">
                   {step.error && <p className="rounded-md bg-destructive/10 px-2.5 py-2 font-mono text-xs break-words text-destructive">{step.error}</p>}
                   {step.note && <p className="text-xs text-muted-foreground">{step.note}</p>}
-                  <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+                  <div className="grid grid-cols-2 gap-3 @sm:grid-cols-3 @3xl:grid-cols-6">
                     <Metric label="Requests" value={String(step.metrics.requests)} />
                     <Metric label="Transferred" value={formatBytes(step.metrics.bytes)} />
                     <Metric label="Failed" value={String(step.metrics.failedRequests)} />
@@ -78,7 +78,7 @@ export function StepsPanel({ steps }: { steps: StepResult[] }) {
                     <div className="grid gap-1">
                       <span className="text-[11px] text-muted-foreground">URL changes</span>
                       {step.urlChanges.map((c, i) => (
-                        <div key={i} className="flex items-center gap-2 text-xs">
+                        <div key={i} className="flex min-w-0 items-center gap-2 text-xs">
                           <Badge variant={c.kind === 'document' ? 'default' : 'secondary'}>{c.kind === 'document' ? 'document' : 'history'}</Badge>
                           <span className="font-mono text-muted-foreground tabular-nums">+{formatMs(c.t)}</span>
                           <span className="truncate" title={c.url}>
@@ -101,7 +101,7 @@ export function StepsPanel({ steps }: { steps: StepResult[] }) {
                   )}
                 </div>
                 {step.screenshot && (
-                  <a href={step.screenshot} target="_blank" rel="noreferrer" className="block self-start overflow-hidden rounded-md border bg-muted">
+                  <a href={step.screenshot} target="_blank" rel="noreferrer" className="order-first block self-start overflow-hidden rounded-md border bg-muted @2xl:order-none">
                     <img src={step.screenshot} alt={`Screenshot after step ${step.index + 1}`} className="w-full" loading="lazy" />
                   </a>
                 )}

@@ -3,21 +3,20 @@
 import { liveFromSummary, RunView } from '@/components/run/run-view'
 import { buttonVariants } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { apiHeaders, useApiKey } from '@/hooks/use-api-key'
+import { apiFetch } from '@/lib/api-client'
 import type { RunSummary } from '@/lib/scenario/schema'
 import { ArrowLeft, Pencil } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 
 export function StoredRun({ id }: { id: string }) {
-  const [apiKey] = useApiKey()
   const [run, setRun] = useState<(RunSummary & { running: boolean }) | null>(null)
   const [error, setError] = useState<string>()
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>
     const load = async () => {
-      const res = await fetch(`/api/runs/${id}`, { headers: apiHeaders(apiKey), cache: 'no-store' })
+      const res = await apiFetch(`/api/runs/${id}`, { cache: 'no-store' })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) return setError(body.error ?? `HTTP ${res.status}`)
       setRun(body)
@@ -26,7 +25,7 @@ export function StoredRun({ id }: { id: string }) {
     }
     void load()
     return () => clearTimeout(timer)
-  }, [id, apiKey])
+  }, [id])
 
   return (
     <div className="grid gap-4">

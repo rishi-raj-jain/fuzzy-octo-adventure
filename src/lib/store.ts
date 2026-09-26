@@ -34,8 +34,8 @@ export function dbAssetSink(runId: string): AssetSink {
   }
 }
 
-export async function createRun(id: string, request: RunRequest, input: RunInput) {
-  await getDb().insert(runs).values({ id, url: input.url, status: 'running', device: input.options.device, network: input.options.network, input: request, options: input.options })
+export async function createRun(id: string, request: RunRequest, input: RunInput, createdBy: string) {
+  await getDb().insert(runs).values({ id, url: input.url, status: 'running', createdBy, device: input.options.device, network: input.options.network, input: request, options: input.options })
 }
 
 export async function finishRun(run: RunSummary) {
@@ -137,6 +137,7 @@ function toSummary(row: RunRow, navs: NavigationRow[]): RunSummary {
       softNavigations: navigationRecords.filter((n) => n.kind === 'soft').length,
     },
     persisted: true,
+    createdBy: row.createdBy ?? undefined,
   }
 }
 
@@ -154,6 +155,7 @@ export interface RunListItem {
   finalUrl?: string
   title?: string
   status: RunRow['status']
+  createdBy?: string
   createdAt: string
   durationMs?: number
   device: string
@@ -163,9 +165,9 @@ export interface RunListItem {
   initial?: { ttfb?: number; fcp?: number; lcp?: number; cls?: number }
 }
 
-export async function listRuns({ limit = 20, before, url }: { limit?: number; before?: string; url?: string }) {
+export async function listRuns({ limit = 20, before, url, createdBy }: { limit?: number; before?: string; url?: string; createdBy?: string }) {
   const db = getDb()
-  const conditions = [before ? lt(runs.createdAt, new Date(before)) : undefined, url ? eq(runs.url, url) : undefined].filter(Boolean)
+  const conditions = [before ? lt(runs.createdAt, new Date(before)) : undefined, url ? eq(runs.url, url) : undefined, createdBy ? eq(runs.createdBy, createdBy) : undefined].filter(Boolean)
   const rows = await db
     .select({
       id: runs.id,
@@ -173,6 +175,7 @@ export async function listRuns({ limit = 20, before, url }: { limit?: number; be
       finalUrl: runs.finalUrl,
       title: runs.title,
       status: runs.status,
+      createdBy: runs.createdBy,
       createdAt: runs.createdAt,
       durationMs: runs.durationMs,
       device: runs.device,
@@ -205,6 +208,7 @@ export async function listRuns({ limit = 20, before, url }: { limit?: number; be
       finalUrl: r.finalUrl ?? undefined,
       title: r.title ?? undefined,
       status: r.status,
+      createdBy: r.createdBy ?? undefined,
       createdAt: r.createdAt.toISOString(),
       durationMs: r.durationMs ?? undefined,
       device: r.device,
@@ -215,6 +219,11 @@ export async function listRuns({ limit = 20, before, url }: { limit?: number; be
     }
   })
   return { runs: items, nextCursor: rows.length === limit ? items[items.length - 1].createdAt : undefined }
+}
+
+export async function getRunOwner(id: string) {
+  const [row] = await getDb().select({ createdBy: runs.createdBy }).from(runs).where(eq(runs.id, id)).limit(1)
+  return row ? { createdBy: row.createdBy } : null
 }
 
 export async function deleteRun(id: string) {
