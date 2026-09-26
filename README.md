@@ -9,7 +9,8 @@ You give it a URL and a list of steps: wait _n_ seconds, run JavaScript in the p
 - A **request waterfall** grouped by step, the **console log** (including page errors and dialogs), each script's **return value**, and the URL changes seen in each step.
 - **Emulation** of device (desktop, iPhone, Android), network (Fast 4G through Slow 3G), CPU throttling, user agent and extra headers.
 - **History** in Neon Postgres (Drizzle ORM). Every run gets a permalink, and navigations are stored as rows so you can query vitals over time.
-- **Sign in with Google** through [Neon Auth](https://neon.com/docs/auth/overview), limited to allowed email domains (`@launchfa.st` and `@neon.com` by default). Programmatic clients use an API key instead.
+- **Filmstrips in Neon Object Storage** (S3-compatible, via `aws4fetch`), served to the browser through short-lived presigned URLs.
+- **Sign in with Google** through [Neon Auth](https://neon.com/docs/auth/overview), limited to allowed email domains (`@launchfa.st`, `@neon.com`, `@neon.tech` and `@databricks.com` by default). Programmatic clients use an API key instead.
 - **Responsive UI** from 320 px phones to wide desktops, with larger touch targets on touch devices.
 
 The UI (Next.js App Router + shadcn/ui) is a thin client over the HTTP API, so anything you can do in the browser you can also do with `curl`.
@@ -45,7 +46,7 @@ Neon Auth is managed Better Auth running next to your Neon database. It stores u
 4. **Google credentials for production.** Neon's shared Google credentials are for development only. Create an OAuth client in Google Cloud and register the redirect URI `<NEON_AUTH_BASE_URL>/callback/google`. Then add it under **Settings → Auth → OAuth providers**, or with `neon neon-auth oauth-provider add --provider-id google --oauth-client-id … --oauth-client-secret …`.
 5. **Trusted domains.** Add your production origin under **Auth → Configuration → Domains**, for example `https://navprobe.vercel.app`. For preview deployments, use a pattern such as `https://*-your-team.vercel.app`. Neon Auth won't redirect back to an origin that isn't listed.
 6. **Block other domains at sign-up.** Under **Auth → Configuration → Webhooks**, set the URL to `https://<your-domain>/api/webhooks/neon-auth` and enable `user.before_create`. The endpoint verifies Neon's Ed25519 signature against your Auth URL's JWKS. It then denies any email that isn't on an allowed domain, and any non-Google sign-up. Neon Auth fails closed, so if the webhook is unreachable, sign-ups are refused.
-7. Optional: change who can sign in with `ALLOWED_EMAIL_DOMAINS` (comma separated). The default is `launchfa.st,neon.com`.
+7. Optional: change who can sign in with `ALLOWED_EMAIL_DOMAINS` (comma separated). The default is `launchfa.st,neon.com,neon.tech,databricks.com`.
 
 How access is enforced:
 
@@ -60,19 +61,35 @@ How access is enforced:
 
 `next.config.ts` adds the packed Chromium to the `/api/runs` function only, via `outputFileTracingIncludes`.
 
+### Neon Object Storage (filmstrips)
+
+Filmstrip frames are uploaded to a private bucket at `runs/<runId>/frames/NNNN.jpg`. The database stores `s3:<key>` references, never URLs, because presigned URLs expire. Every API response that returns a run (the streamed `step` events, the JSON result and `GET /api/runs/:id`) swaps those references for presigned GET URLs valid for one hour. The browser then loads the images straight from Neon Object Storage.
+
+1. Create a bucket on your branch (the default name is `assets`): Console → **Object storage → New bucket**, or run `neon buckets create assets`. Keep it **private**.
+2. Create an access key **for the same branch** with `neon credentials create --scope storage:read --scope storage:write`. Keys are branch-scoped: a key minted for another branch fails with `InvalidAccessKeyId`.
+3. Set `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_REGION`, plus `S3_BUCKET` if your bucket isn't called `assets`.
+
+- Deleting a run also deletes its frames.
+- If an upload fails, that frame is stored in Postgres instead, so it still appears in the filmstrip.
+- Without these variables, frames go to Postgres as before. Screenshots always stay in Postgres.
+
 ### Environment variables
 
-| Variable                  | Purpose                                                                                                           |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`            | Neon connection string. Without it runs still work, but nothing is saved and images are inlined as data URLs.     |
-| `NEON_AUTH_BASE_URL`      | Neon Auth URL from the Console, e.g. `https://ep-….neonauth….aws.neon.tech/neondb/auth` (required in production). |
-| `NEON_AUTH_COOKIE_SECRET` | At least 32 random characters. Signs the session cache cookie (required in production).                           |
-| `ALLOWED_EMAIL_DOMAINS`   | Comma-separated email domains allowed to sign in (default `launchfa.st,neon.com`).                                |
-| `NAVPROBE_API_KEY`        | Lets programmatic clients call the API with `Authorization: Bearer <key>` or `x-api-key: <key>`.                  |
-| `MAX_RUN_SECONDS`         | Hard cap per run (default 270). Keep it below the route's `maxDuration`.                                          |
-| `ALLOW_PRIVATE_NETWORKS`  | `true` allows localhost and private IPs as targets (always allowed in `next dev`).                                |
-| `CHROME_EXECUTABLE_PATH`  | Local Chrome/Chromium binary to use instead of auto-detection.                                                    |
-| `CHROME_PROXY_SERVER`     | Send the local browser through an HTTP proxy.                                                                     |
+| Variable                                      | Purpose                                                                                                                           |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                | Neon connection string. Without it runs still work, but nothing is saved and images are inlined as data URLs.                     |
+| `NEON_AUTH_BASE_URL`                          | Neon Auth URL from the Console, e.g. `https://ep-….neonauth….aws.neon.tech/neondb/auth` (required in production).                 |
+| `NEON_AUTH_COOKIE_SECRET`                     | At least 32 random characters. Signs the session cache cookie (required in production).                                           |
+| `ALLOWED_EMAIL_DOMAINS`                       | Comma-separated email domains allowed to sign in (default `launchfa.st,neon.com,neon.tech,databricks.com`).                       |
+| `AWS_ENDPOINT_URL_S3`                         | Neon Object Storage endpoint for your branch, e.g. `https://br-….storage.c-7.us-east-2.aws.neon.tech`. Enables filmstrip storage. |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Branch-scoped storage credentials (`nak_live_…` / `nsk_live_…`).                                                                  |
+| `AWS_REGION`                                  | Region for SigV4 signing (e.g. `us-east-2`).                                                                                      |
+| `S3_BUCKET`                                   | Bucket for filmstrip frames (default `assets`).                                                                                   |
+| `NAVPROBE_API_KEY`                            | Lets programmatic clients call the API with `Authorization: Bearer <key>` or `x-api-key: <key>`.                                  |
+| `MAX_RUN_SECONDS`                             | Hard cap per run (default 270). Keep it below the route's `maxDuration`.                                                          |
+| `ALLOW_PRIVATE_NETWORKS`                      | `true` allows localhost and private IPs as targets (always allowed in `next dev`).                                                |
+| `CHROME_EXECUTABLE_PATH`                      | Local Chrome/Chromium binary to use instead of auto-detection.                                                                    |
+| `CHROME_PROXY_SERVER`                         | Send the local browser through an HTTP proxy.                                                                                     |
 
 ## API
 

@@ -1,35 +1,69 @@
 import { assets, getDb, navigations, runs, type NavigationRow, type RunRow } from '@/db'
+import { deletePrefix, hasObjectStorage, inBatches, putObject, toRef } from '@/lib/object-storage'
 import type { AssetSink } from '@/lib/scenario/runner'
 import type { NavigationRecord, RunInput, RunRequest, RunSummary } from '@/lib/scenario/schema'
 import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm'
 
 const MAX_INSERT_CHARS = 3_000_000
 
-/** Buffers screenshots/frames and writes them in batches; the run references them by URL. */
-export function dbAssetSink(runId: string): AssetSink {
-  let queue: { id: string; runId: string; kind: 'screenshot' | 'frame'; data: string }[] = []
+type DbAsset = { id: string; runId: string; kind: 'screenshot' | 'frame'; data: string }
+
+async function insertAssets(items: DbAsset[]) {
+  let batch: DbAsset[] = []
+  let size = 0
+  const write = async () => {
+    if (batch.length) await getDb().insert(assets).values(batch)
+    batch = []
+    size = 0
+  }
+  for (const item of items) {
+    if (size + item.data.length > MAX_INSERT_CHARS) await write()
+    batch.push(item)
+    size += item.data.length
+  }
+  await write()
+}
+
+/**
+ * Where a persisted run's images go. Filmstrip frames go to Neon Object Storage when it is configured
+ * (referenced as `s3:<key>` and served through presigned URLs); screenshots, and frames without object storage,
+ * go to the `assets` table and are served by /api/assets/:id.
+ */
+export function persistentAssetSink(runId: string): AssetSink {
+  const useObjectStorage = hasObjectStorage()
+  let dbQueue: DbAsset[] = []
+  let objectQueue: { key: string; data: string }[] = []
+  let frameSeq = 0
   return {
     put(kind, data) {
+      if (kind === 'frame' && useObjectStorage) {
+        const key = `runs/${runId}/frames/${String(frameSeq++).padStart(4, '0')}.jpg`
+        objectQueue.push({ key, data })
+        return toRef(key)
+      }
       const id = crypto.randomUUID()
-      queue.push({ id, runId, kind, data })
+      dbQueue.push({ id, runId, kind, data })
       return `/api/assets/${id}`
     },
     async flush() {
-      const pending = queue
-      queue = []
-      let batch: typeof pending = []
-      let size = 0
-      const write = async () => {
-        if (batch.length) await getDb().insert(assets).values(batch)
-        batch = []
-        size = 0
-      }
-      for (const item of pending) {
-        if (size + item.data.length > MAX_INSERT_CHARS) await write()
-        batch.push(item)
-        size += item.data.length
-      }
-      await write()
+      const rewrites = new Map<string, string>()
+      const uploads = objectQueue
+      objectQueue = []
+      await inBatches(uploads, 8, async ({ key, data }) => {
+        try {
+          await putObject(key, Buffer.from(data, 'base64'), 'image/jpeg')
+        } catch (e) {
+          // Never lose a frame to a storage hiccup: keep it in Postgres instead.
+          console.error(`[navprobe] ${(e as Error).message}; storing the frame in Postgres`)
+          const id = crypto.randomUUID()
+          dbQueue.push({ id, runId, kind: 'frame', data })
+          rewrites.set(toRef(key), `/api/assets/${id}`)
+        }
+      })
+      const pending = dbQueue
+      dbQueue = []
+      await insertAssets(pending)
+      return rewrites
     },
   }
 }
@@ -228,6 +262,9 @@ export async function getRunOwner(id: string) {
 
 export async function deleteRun(id: string) {
   const deleted = await getDb().delete(runs).where(eq(runs.id, id)).returning({ id: runs.id })
+  if (deleted.length && hasObjectStorage()) {
+    await deletePrefix(`runs/${id}/`).catch((e) => console.error(`[navprobe] could not delete stored frames for run ${id}:`, e))
+  }
   return deleted.length > 0
 }
 

@@ -1,6 +1,6 @@
-/** Email domains allowed to sign in. Override with ALLOWED_EMAIL_DOMAINS="launchfa.st,neon.com". */
+/** Email domains allowed to sign in. Override with ALLOWED_EMAIL_DOMAINS="launchfa.st,neon.com,neon.tech,databricks.com". */
 export function allowedDomains(): string[] {
-  const raw = process.env.ALLOWED_EMAIL_DOMAINS || 'launchfa.st,neon.com'
+  const raw = process.env.ALLOWED_EMAIL_DOMAINS || 'launchfa.st,neon.com,neon.tech,databricks.com'
   return raw
     .split(',')
     .map((d) => d.trim().toLowerCase().replace(/^@/, ''))

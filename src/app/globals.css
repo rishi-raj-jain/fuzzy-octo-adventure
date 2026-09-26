@@ -127,4 +127,26 @@
   html {
     @apply font-sans;
   }
+  /* Everything clickable gets a pointer (Tailwind v4 leaves buttons on the default cursor).
+     :where() keeps specificity at zero, so utilities and the disabled rule below still win. */
+  :where(
+    button,
+    a[href],
+    summary,
+    select,
+    [role='button'],
+    [role='tab'],
+    [role='option'],
+    [role='switch'],
+    [role='checkbox'],
+    [role='radio'],
+    [role='combobox'],
+    [role='menuitem'],
+    input:is([type='checkbox'], [type='radio'], [type='submit'], [type='button'], [type='reset'], [type='file'], [type='color'], [type='range'])
+  ) {
+    cursor: pointer;
+  }
+  :where(:disabled, [aria-disabled='true'], [data-disabled]) {
+    cursor: not-allowed;
+  }
 }

@@ -28,10 +28,13 @@ const MAX_FRAMES = 240
 const FRAME_INTERVAL_MS = 150
 const PASSIVE_STEPS = new Set<Step['type']>(['wait', 'waitForSelector', 'waitForNetworkIdle'])
 
-/** Where screenshots/frames go. Returns the URL (or data: URL) the result should reference. */
+/**
+ * Where screenshots/frames go. `put` returns the reference the result should hold (a URL, data: URL or `s3:` key);
+ * `flush` persists what was queued and may return replacements for references that had to change.
+ */
 export interface AssetSink {
   put(kind: 'screenshot' | 'frame', base64Jpeg: string): string
-  flush(): Promise<void>
+  flush(): Promise<Map<string, string> | void>
 }
 
 export const inlineAssets: AssetSink = { put: (_kind, b64) => `data:image/jpeg;base64,${b64}`, flush: async () => {} }
@@ -437,7 +440,11 @@ export async function runScenario(input: RunInput, { id, emit = () => {}, signal
         frames: collectFrames(),
       }
       steps.push(result)
-      await assets.flush()
+      const rewrites = await assets.flush()
+      if (rewrites?.size) {
+        for (const f of result.frames) f.src = rewrites.get(f.src) ?? f.src
+        if (result.screenshot) result.screenshot = rewrites.get(result.screenshot) ?? result.screenshot
+      }
       emit({ type: 'step', step: result })
       emit({ type: 'navigations', navigations: buildNavigations(Date.now()) })
 

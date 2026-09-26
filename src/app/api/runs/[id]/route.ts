@@ -1,5 +1,6 @@
 import { hasDatabase } from '@/db'
 import { isDenied, jsonError, requireAccess } from '@/lib/api'
+import { resolveStepAssets } from '@/lib/object-storage'
 import { deleteRun, getRun, getRunOwner } from '@/lib/store'
 
 export const runtime = 'nodejs'
@@ -11,7 +12,7 @@ export async function GET(req: Request, ctx: RouteContext<'/api/runs/[id]'>) {
   const { id } = await ctx.params
   const run = await getRun(id)
   if (!run) return jsonError('Run not found', 404)
-  return Response.json({ ...run.summary, running: run.running, input: run.input })
+  return Response.json({ ...run.summary, steps: await resolveStepAssets(run.summary.steps), running: run.running, input: run.input })
 }
 
 /** Runs are visible to the whole team, but only their creator (or an API key) can delete them. */

@@ -1,9 +1,10 @@
 import { hasDatabase } from '@/db'
 import { isDenied, jsonError, requireAccess } from '@/lib/api'
+import { resolveStepAssets } from '@/lib/object-storage'
 import { assertPublicUrl } from '@/lib/scenario/guard'
 import { inlineAssets, runScenario } from '@/lib/scenario/runner'
 import { runInputSchema, type RunEvent, type RunSummary } from '@/lib/scenario/schema'
-import { createRun, dbAssetSink, finishRun, listRuns } from '@/lib/store'
+import { createRun, finishRun, listRuns, persistentAssetSink } from '@/lib/store'
 import { z } from 'zod'
 
 export const runtime = 'nodejs'
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
   }
 
   const execute = async (emit: (e: RunEvent) => void, signal: AbortSignal) => {
-    const run: RunSummary = await runScenario(input, { id, emit, signal, assets: persist ? dbAssetSink(id) : inlineAssets })
+    const run: RunSummary = await runScenario(input, { id, emit, signal, assets: persist ? persistentAssetSink(id) : inlineAssets })
     run.createdBy = access.actor
     if (persist) {
       try {
@@ -57,7 +58,8 @@ export async function POST(req: Request) {
   const stream = url.searchParams.get('stream') === '1' || (req.headers.get('accept') ?? '').includes('application/x-ndjson')
   if (!stream) {
     const run = await execute(() => {}, req.signal)
-    return Response.json(run, { status: run.status === 'ok' ? 200 : run.status === 'timeout' ? 504 : 502 })
+    const body = { ...run, steps: await resolveStepAssets(run.steps) }
+    return Response.json(body, { status: run.status === 'ok' ? 200 : run.status === 'timeout' ? 504 : 502 })
   }
 
   const encoder = new TextEncoder()
@@ -65,13 +67,18 @@ export async function POST(req: Request) {
   req.signal.addEventListener('abort', () => abort.abort(), { once: true })
   let controller!: ReadableStreamDefaultController<Uint8Array>
   let closed = false
+  // Step events carry `s3:` references that must be presigned (async) — a promise chain keeps events in order.
+  let queue = Promise.resolve()
   const send = (event: RunEvent) => {
-    if (closed) return
-    try {
-      controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'))
-    } catch {
-      closed = true
-    }
+    queue = queue.then(async () => {
+      if (closed) return
+      const out = event.type === 'step' ? { ...event, step: (await resolveStepAssets([event.step]))[0] } : event
+      try {
+        controller.enqueue(encoder.encode(JSON.stringify(out) + '\n'))
+      } catch {
+        closed = true
+      }
+    })
   }
   const readable = new ReadableStream<Uint8Array>({
     start(c) {
@@ -90,6 +97,7 @@ export async function POST(req: Request) {
       send({ type: 'done', run: rest })
     })
     .catch((e) => send({ type: 'error', message: e instanceof Error ? e.message : String(e) }))
+    .then(() => queue)
     .finally(() => {
       clearInterval(heartbeat)
       if (!closed) controller.close()
