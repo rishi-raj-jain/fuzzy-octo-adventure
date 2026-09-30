@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { newStep, SCRIPT_PRESETS, type DraftStep } from '@/lib/draft'
 import { STEP_LABELS, type StepType } from '@/lib/scenario/schema'
-import { ArrowDown, ArrowUp, Clock, Code2, Globe, Keyboard, MousePointerClick, ScanSearch, Trash2, Wifi } from 'lucide-react'
+import { ArrowDown, ArrowUp, Clock, Code2, Globe, Keyboard, MousePointerClick, Route, ScanSearch, Trash2, Wifi } from 'lucide-react'
 import type { ComponentType } from 'react'
 
 export const STEP_ICONS: Record<StepType, ComponentType<{ className?: string }>> = {
@@ -19,6 +19,7 @@ export const STEP_ICONS: Record<StepType, ComponentType<{ className?: string }>>
   type: Keyboard,
   waitForSelector: ScanSearch,
   waitForNetworkIdle: Wifi,
+  waitForNavigation: Route,
 }
 
 const SELECTOR_HINT = 'CSS selector, or Puppeteer syntax like ::-p-text(Sign in) or ::-p-aria(Submit)'
@@ -125,13 +126,17 @@ export function StepEditor({
           </>
         )}
 
-        {step.type === 'waitForNetworkIdle' && (
-          <Field label="Idle for (ms)" htmlFor={fid('idle')}>
+        {step.type === 'waitForNavigation' && (
+          <p className="text-xs text-muted-foreground">Waits for the page load or client-side route change started by the previous step, then until the network and screen have been quiet for the idle time.</p>
+        )}
+
+        {(step.type === 'waitForNetworkIdle' || step.type === 'waitForNavigation') && (
+          <Field label={step.type === 'waitForNavigation' ? 'Quiet for (ms)' : 'Idle for (ms)'} htmlFor={fid('idle')}>
             <Input id={fid('idle')} type="number" min={0} max={10000} step={100} value={step.idleMs} onChange={(e) => set({ idleMs: Number(e.target.value) })} />
           </Field>
         )}
 
-        {(step.type === 'click' || step.type === 'type' || step.type === 'waitForSelector' || step.type === 'waitForNetworkIdle') && (
+        {(step.type === 'click' || step.type === 'type' || step.type === 'waitForSelector' || step.type === 'waitForNetworkIdle' || step.type === 'waitForNavigation') && (
           <Field label="Timeout (seconds)" htmlFor={fid('timeout')}>
             <Input id={fid('timeout')} type="number" min={0.1} max={120} value={step.timeoutSeconds} onChange={(e) => set({ timeoutSeconds: Number(e.target.value) })} />
           </Field>

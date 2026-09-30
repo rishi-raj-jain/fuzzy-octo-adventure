@@ -283,7 +283,7 @@ export function ScenarioBuilder({
                 <Loader2 className="size-3.5 shrink-0 animate-spin" /> Running remotely…
               </span>
             ) : (
-              `${draft.steps.length + 1} steps · ${totalWait}s of waits`
+              `${draft.steps.length + 1} steps${totalWait ? ` · ${totalWait}s of waits` : ''}`
             )}
           </span>
           {running ? (

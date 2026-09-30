@@ -178,8 +178,10 @@ export const PAGE_AGENT = `(() => {
     lastPath = path;
     const t = now();
     const fromInput = lastInput && t - lastInput.t < 1000;
+    // replaceState without user input is URL housekeeping (tracking params, canonical URLs), not a navigation.
+    if (how === 'replace' && !fromInput) return;
     const start = fromInput ? lastInput.t : t;
-    const r = mk('soft', start, { trigger: fromInput ? lastInput.type + (lastInput.target ? ' ' + lastInput.target : '') : how, urlChangeAt: round(t - start) });
+    const r = mk('soft', start, { trigger: fromInput ? lastInput.type + (lastInput.target ? ' ' + lastInput.target : '') : how, navType: how, urlChangeAt: round(t - start) });
     watchSoft(r);
   };
   if (window.navigation && typeof navigation.addEventListener === 'function') {

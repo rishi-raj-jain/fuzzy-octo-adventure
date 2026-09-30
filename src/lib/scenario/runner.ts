@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { PredefinedNetworkConditions, type Browser, type CDPSession, type Page } from 'puppeteer-core'
+import { PredefinedNetworkConditions, type Browser, type CDPSession, type ElementHandle, type Page } from 'puppeteer-core'
 import { launchBrowser } from './browser'
 import { assertPublicUrl } from './guard'
 import { FLUSH_FN, PAGE_AGENT, REPORT_BINDING } from './page-agent'
@@ -26,7 +26,14 @@ const MAX_REQUESTS = 2000
 const MAX_CONSOLE = 500
 const MAX_FRAMES = 240
 const FRAME_INTERVAL_MS = 150
-const PASSIVE_STEPS = new Set<Step['type']>(['wait', 'waitForSelector', 'waitForNetworkIdle'])
+const PASSIVE_STEPS = new Set<Step['type']>(['wait', 'waitForSelector', 'waitForNetworkIdle', 'waitForNavigation'])
+/** waitForNavigation: requests that never finish (long polling, streams) stop counting as "busy" after this. */
+const STUCK_REQUEST_MS = 10_000
+/** waitForNavigation: how long to wait for the screen to stop changing once the network is quiet (animations never stop). */
+const SCREEN_SETTLE_MAX_MS = 5_000
+/** A soft navigation that painted nothing before a document load started within this window is dropped. */
+const SUPERSEDED_SOFT_NAV_MS = 1000
+const LONG_LIVED_TYPES = new Set(['EventSource', 'WebSocket'])
 
 /**
  * Where screenshots/frames go. `put` returns the reference the result should hold (a URL, data: URL or `s3:` key);
@@ -68,6 +75,15 @@ interface RawNav {
   httpStatus?: number
 }
 
+const shortPath = (url: string) => {
+  try {
+    const u = new URL(url)
+    return (u.pathname + u.search).slice(0, 120)
+  } catch {
+    return url.slice(0, 120)
+  }
+}
+const formatSeconds = (ms: number) => (ms < 1000 ? `${Math.max(0, Math.round(ms))}ms` : `${(ms / 1000).toFixed(1)}s`)
 const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e)).split('\n')[0].slice(0, 1000)
 const isNavigationInterruption = (e: unknown) => /context was destroyed|navigat|detached|Target closed|Cannot find context/i.test(errorMessage(e))
 
@@ -263,7 +279,36 @@ export async function runScenario(input: RunInput, { id, emit = () => {}, signal
     return p
   }
 
-  async function executeStep(p: Page, step: Step): Promise<{ note?: string; returnValue?: unknown }> {
+  /**
+   * First *visible* element matching `selector`. Puppeteer's own waiting only looks at the first match, which on
+   * many sites is a hidden copy (mobile menu, off-screen nav) of the element people actually click.
+   */
+  async function waitForVisible(p: Page, selector: string, timeoutMs: number): Promise<ElementHandle> {
+    const deadline = Date.now() + timeoutMs
+    while (true) {
+      const handles = await p.$$(selector)
+      let found: ElementHandle | undefined
+      for (const h of handles) {
+        if (!found && (await h.evaluate((el) => el.isConnected && el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) && el.getClientRects().length > 0).catch(() => false))) found = h
+        else await h.dispose()
+      }
+      if (found) return found
+      if (Date.now() >= deadline) throw new Error(`No visible element matches ${selector} after ${Math.round(timeoutMs / 1000)}s${handles.length ? ` (${handles.length} hidden)` : ''}`)
+      await sleep(100, signal)
+    }
+  }
+
+  /** Scrolls the first visible match into view and clicks its centre with real mouse events, like a user. */
+  async function clickVisible(p: Page, selector: string, timeoutMs: number) {
+    const el = await waitForVisible(p, selector, timeoutMs)
+    try {
+      await el.click()
+    } finally {
+      await el.dispose().catch(() => {})
+    }
+  }
+
+  async function executeStep(p: Page, step: Step, index: number): Promise<{ note?: string; returnValue?: unknown }> {
     switch (step.type) {
       case 'navigate': {
         await assertPublicUrl(step.url)
@@ -278,25 +323,21 @@ export async function runScenario(input: RunInput, { id, emit = () => {}, signal
         return { returnValue: clampReturnValue(value) }
       }
       case 'click':
-        await p
-          .locator(step.selector)
-          .setTimeout(Math.min(step.timeoutSeconds * 1000, remaining()))
-          .click()
+        await clickVisible(p, step.selector, Math.min(step.timeoutSeconds * 1000, remaining()))
         return {}
       case 'type':
-        await p
-          .locator(step.selector)
-          .setTimeout(Math.min(step.timeoutSeconds * 1000, remaining()))
-          .click()
+        await clickVisible(p, step.selector, Math.min(step.timeoutSeconds * 1000, remaining()))
         await p.keyboard.type(step.text, { delay: 20 })
         if (step.pressEnter) await p.keyboard.press('Enter')
         return {}
       case 'waitForSelector':
-        await p.waitForSelector(step.selector, { visible: true, timeout: Math.min(step.timeoutSeconds * 1000, remaining()) })
+        await (await waitForVisible(p, step.selector, Math.min(step.timeoutSeconds * 1000, remaining()))).dispose()
         return {}
       case 'waitForNetworkIdle':
         await p.waitForNetworkIdle({ idleTime: step.idleMs, timeout: Math.min(step.timeoutSeconds * 1000, remaining()) })
         return {}
+      case 'waitForNavigation':
+        return waitForNavigation(step, index)
     }
   }
 
@@ -312,7 +353,7 @@ export async function runScenario(input: RunInput, { id, emit = () => {}, signal
   }
 
   function buildNavigations(runEnd: number): NavigationRecord[] {
-    const sorted = [...rawNavs.values()].sort((a, b) => a.startEpoch - b.startEpoch)
+    const sorted = realNavigations()
     const reqs = [...requests.values()]
     return sorted.map(({ raw, startEpoch }, i) => {
       const endEpoch = sorted[i + 1]?.startEpoch ?? runEnd
@@ -320,6 +361,8 @@ export async function runScenario(input: RunInput, { id, emit = () => {}, signal
       stepWindows.forEach((w, idx) => {
         if (w.start <= startEpoch + 1) stepIndex = idx
       })
+      // A navigation that starts while a wait step runs was caused by the action before it (e.g. a slow click handler).
+      stepIndex = actionStepAt(stepIndex)
       // Pixels that change once the next interaction starts (hover, focus, scroll…) are not part of this navigation.
       const nextAction = stepWindows.findIndex((w, idx) => idx > stepIndex && w.start > startEpoch && !PASSIVE_STEPS.has(plan[idx].type))
       const visualEnd = Math.min(endEpoch, nextAction === -1 ? runEnd : stepWindows[nextAction].start)
@@ -361,6 +404,92 @@ export async function runScenario(input: RunInput, { id, emit = () => {}, signal
     })
   }
 
+  /**
+   * Navigations in start order, minus soft navigations that were only a URL rewrite on the way out: a page
+   * that changes its URL on click (e.g. adds a tracking token) and then loads a new document right away.
+   */
+  function realNavigations() {
+    const sorted = [...rawNavs.values()].sort((a, b) => a.startEpoch - b.startEpoch)
+    return sorted.filter(({ raw, startEpoch }, i) => {
+      const next = sorted[i + 1]
+      return !(raw.kind === 'soft' && raw.fcp === undefined && raw.lcp === undefined && next?.raw.kind === 'hard' && next.startEpoch - startEpoch < SUPERSEDED_SOFT_NAV_MS)
+    })
+  }
+
+  /** Last action step (click, script, navigate…) at or before `index`: the one that caused what `index` waits for. */
+  const actionStepAt = (index: number) => {
+    let i = index
+    while (i > 0 && PASSIVE_STEPS.has(plan[i].type)) i--
+    return i
+  }
+
+  // Navigations already claimed by an earlier waitForNavigation step, so two in a row wait for two navigations.
+  const awaitedNavs = new Set<string>()
+
+  /**
+   * Waits for the navigation (hard or soft) started by the previous action step, which may already have
+   * begun while that step ran. Then waits until no request has been in flight for `idleMs` (and, for a
+   * document load, the load event fired) and the screen has stopped changing. If another navigation starts
+   * meanwhile (a redirect, or a URL rewrite followed by a page load) it follows that one instead.
+   * Finding no navigation is an error; a page that never goes quiet only adds a note, so busy pages don't fail the run.
+   */
+  async function waitForNavigation(step: Extract<Step, { type: 'waitForNavigation' }>, index: number) {
+    const deadline = Date.now() + Math.min(step.timeoutSeconds * 1000, remaining())
+    const cause = actionStepAt(index - 1)
+    // A few ms of slack: navigation start times come from the page's clock.
+    const since = stepWindows[cause].start - 20
+    const nextNav = () => [...rawNavs.values()].filter((n) => n.startEpoch >= since && !awaitedNavs.has(n.raw.id)).sort((a, b) => a.startEpoch - b.startEpoch)[0]
+    let nav: { raw: RawNav; startEpoch: number } | undefined
+    /** Moves on to the newest navigation seen so far; true if it changed. */
+    const follow = () => {
+      let changed = false
+      for (let n = nextNav(); n; n = nextNav()) {
+        awaitedNavs.add(n.raw.id)
+        nav = n
+        changed = true
+      }
+      return changed
+    }
+
+    while (!follow()) {
+      if (Date.now() >= deadline) {
+        throw new Error(`No navigation within ${step.timeoutSeconds}s of step ${cause + 1}. Soft navigations are detected when the URL path or query changes.`)
+      }
+      await sleep(50, signal)
+    }
+    const current = () => rawNavs.get(nav!.raw.id) ?? nav!
+    const describeNav = () => `${current().raw.kind === 'hard' ? 'Page load' : 'Soft navigation'} to ${shortPath(current().raw.url)}`
+    const inFlight = () => {
+      const now = rel(Date.now())
+      return [...requests.values()].filter((r) => r.end === undefined && !r.failed && r.start >= rel(since) && now - r.start < STUCK_REQUEST_MS && !LONG_LIVED_TYPES.has(r.resourceType)).length
+    }
+    const loaded = () => current().raw.kind === 'soft' || current().raw.load !== undefined
+
+    let quietSince: number | null = null
+    while (true) {
+      const busy = inFlight()
+      const now = Date.now()
+      if (follow() || busy || !loaded()) quietSince = null
+      else if (quietSince === null) quietSince = now
+      if (quietSince !== null && now - quietSince >= step.idleMs) break
+      if (now >= deadline) {
+        const why = busy ? `${busy} request${busy === 1 ? '' : 's'} still in flight` : 'the load event had not fired'
+        return { note: `${describeNav()} · not settled after ${step.timeoutSeconds}s (${why}), moved on` }
+      }
+      await sleep(50, signal)
+    }
+
+    const screenDeadline = Date.now() + Math.min(SCREEN_SETTLE_MAX_MS, remaining())
+    const quietFor = Math.max(step.idleMs, 300)
+    while (Date.now() - (frameTimes[frameTimes.length - 1] ?? 0) < quietFor) {
+      if (Date.now() >= screenDeadline) return { note: `${describeNav()} · network settled, screen still changing (animation?) after ${SCREEN_SETTLE_MAX_MS / 1000}s` }
+      await sleep(50, signal)
+    }
+    // Settled = the later of the last request finishing and the last visual change.
+    const settledAt = Math.max(quietSince ?? 0, frameTimes[frameTimes.length - 1] ?? 0)
+    return { note: `${describeNav()} · settled ${formatSeconds(settledAt - current().startEpoch)} after it started` }
+  }
+
   const flushAgent = async (p: Page) => {
     await p.evaluate(`window.${FLUSH_FN} && window.${FLUSH_FN}()`).catch(() => {})
   }
@@ -392,7 +521,7 @@ export async function runScenario(input: RunInput, { id, emit = () => {}, signal
       let note: string | undefined
       let returnValue: unknown
       try {
-        ;({ note, returnValue } = await executeStep(page, step))
+        ;({ note, returnValue } = await executeStep(page, step, i))
       } catch (e) {
         if (signal?.aborted) throw e
         if ((step.type === 'script' || step.type === 'click') && isNavigationInterruption(e)) note = 'The page navigated while this step ran'

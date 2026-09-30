@@ -26,6 +26,7 @@ export function newStep(type: StepType): DraftStep {
     case 'waitForSelector':
       return { id, type, selector: '', timeoutSeconds: 30 }
     case 'waitForNetworkIdle':
+    case 'waitForNavigation':
       return { id, type, idleMs: 500, timeoutSeconds: 30 }
   }
 }
@@ -36,7 +37,11 @@ export function defaultDraft(): Draft {
   return {
     url: '',
     // Stable ids: this draft is also rendered on the server.
-    steps: [{ ...newStep('wait'), id: 'default-1', seconds: 3 } as DraftStep, { ...newStep('script'), id: 'default-2' }, { ...newStep('wait'), id: 'default-3', seconds: 5 } as DraftStep],
+    // Load, click the first internal link, then measure the navigation it causes (hard or soft).
+    steps: [
+      { ...newStep('script'), id: 'default-1' },
+      { ...newStep('waitForNavigation'), id: 'default-2' },
+    ],
     options: optionsSchema.parse({}),
   }
 }

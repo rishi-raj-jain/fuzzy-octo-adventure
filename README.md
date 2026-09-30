@@ -119,11 +119,10 @@ curl -X POST https://your-app.vercel.app/api/runs \
   -d '{
     "url": "https://nextjs.org",
     "steps": [
-      { "type": "wait", "seconds": 2 },
-      { "type": "script", "script": "document.querySelector(\"a[href=\\\"/docs\\\"]\").click()" },
-      { "type": "wait", "seconds": 4 }
+      { "type": "click", "selector": "a[href=\"/docs\"]" },
+      { "type": "waitForNavigation" }
     ],
-    "options": { "device": "iphone", "network": "Fast 4G", "cpuThrottle": 4 }
+    "options": { "device": "iphone", "network": "Fast 4G", "cpuThrottle": 4, "waitUntil": "networkidle0" }
   }'
 ```
 
@@ -145,9 +144,22 @@ This expands to `wait 3s → run script → wait 5s` (`settle` defaults to 3).
 | `type`               | `selector`, `text`, `pressEnter`, `timeoutSeconds`                                               |
 | `waitForSelector`    | `selector`, `timeoutSeconds`                                                                     |
 | `waitForNetworkIdle` | `idleMs`, `timeoutSeconds`                                                                       |
+| `waitForNavigation`  | `idleMs` (default 500), `timeoutSeconds`: see below                                              |
 | `navigate`           | `url`                                                                                            |
 
-Selectors are Puppeteer selectors. Plain CSS works, and so do `::-p-text(Sign in)`, `::-p-aria(Submit)` and `::-p-xpath(...)`. Any step can also carry a `label`.
+**`waitForNavigation`** waits for the navigation that the previous action step caused. It works the same for a full page load and a client-side route change, even if the navigation began while the click was still running. It then waits until no request has been in flight for `idleMs` (plus the `load` event, for page loads), and until the screen has stopped changing (at most 5 s more). If a redirect or another navigation follows, it waits for that one instead. The step fails only when no navigation happens within `timeoutSeconds`. A page that never goes quiet (polling, animations) just gets a note, and the run continues. So "load the page, click, wait for the navigation" works for any site:
+
+```json
+{
+  "url": "https://old.example.com/search?q=bus",
+  "steps": [{ "type": "click", "selector": "a[href=\"/wiki/Bus\"]" }, { "type": "waitForNavigation" }],
+  "options": { "waitUntil": "networkidle0" }
+}
+```
+
+Run the same scenario against the old and the new site, then compare them. Navigation #1 is the first page load and #2 is the click, whether it was hard or soft.
+
+Selectors are Puppeteer selectors. Plain CSS works, and so do `::-p-text(Sign in)`, `::-p-aria(Submit)` and `::-p-xpath(...)`. `click`, `type` and `waitForSelector` use the first _visible_ match, so hidden copies (a collapsed mobile menu, for instance) are skipped. Any step can also carry a `label`.
 
 **Options** (all optional): `device` (`desktop`, `desktop-hd`, `iphone`, `android`), `network` (`none`, `Fast 4G`, `Slow 4G`, `Fast 3G`, `Slow 3G`), `cpuThrottle` (1–20), `waitUntil` for the initial load (`load`, `domcontentloaded`, `networkidle2`, `networkidle0`), `screenshots`, `filmstrip`, `continueOnError`, `userAgent`, `headers`, `region` (a Vercel region code enabled with `NAVPROBE_REGIONS`; see [Regions](#regions)).
 
@@ -176,7 +188,9 @@ When a database is configured, screenshots and frames come back as `/api/assets/
 Before any page script runs, a small agent (`src/lib/scenario/page-agent.ts`) is injected into **every document**. It keeps one record per navigation and streams it to Node through a CDP binding. It also flushes on `pagehide`, so a page that navigates away still reports its numbers.
 
 - **Hard navigations** use the browser's own entries: Navigation Timing (TTFB, DCL, load), `paint` (FCP), `largest-contentful-paint`, `layout-shift` (CLS, largest session window), `event` (INP) and `longtask` (TBT).
-- **Soft navigations** start when a same-document navigation changes the path or query (Navigation API `currententrychange`, with a `pushState`/`popstate` fallback). The start is anchored to the interaction that caused it: a pointerdown, click, keydown or submit within 1 s before the URL change. Browsers don't report paint timing for same-document navigations, so FCP and LCP come from a heuristic. A `MutationObserver` watches newly added text, images, SVG, video and canvas, and measures when they paint and how much of the viewport they cover. CLS, INP and TBT are windowed to that navigation.
+- **Soft navigations** start when a same-document navigation changes the path or query (Navigation API `currententrychange`, with a `pushState`/`popstate` fallback). The start is anchored to the interaction that caused it: a pointerdown, click, keydown or submit within 1 s before the URL change. Browsers don't report paint timing for same-document navigations, so FCP and LCP come from a heuristic. A `MutationObserver` watches newly added text, images, SVG, video and canvas, and measures when they paint and how much of the viewport they cover. CLS, INP and TBT are windowed to that navigation. Some URL changes aren't navigations, and are ignored:
+  - a `replaceState` without user input, such as tracking parameters or canonical URLs;
+  - a URL change right before a full page load that paints nothing in the meantime. Wikipedia, for example, adds a search token to the URL when you click a result.
 - **First visual change / visually complete** come from a CDP screencast. Chromium emits a frame only when pixels change. Frames that repeat the previous image byte for byte (for example ones forced by our own screenshots) are dropped. Visually complete stops at the next interactive step, so hover effects from the next click don't count.
 
 Things to know:

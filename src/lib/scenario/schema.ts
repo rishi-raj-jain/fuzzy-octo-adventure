@@ -58,6 +58,8 @@ export const stepSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('type'), label, selector, text: z.string().max(5000), pressEnter: z.boolean().default(false), timeoutSeconds }),
   z.object({ type: z.literal('waitForSelector'), label, selector, timeoutSeconds }),
   z.object({ type: z.literal('waitForNetworkIdle'), label, idleMs: z.number().int().min(0).max(10000).default(500), timeoutSeconds }),
+  /** Waits for the navigation (hard or soft) caused by the previous action step, then for it to settle. */
+  z.object({ type: z.literal('waitForNavigation'), label, idleMs: z.number().int().min(0).max(10000).default(500), timeoutSeconds }),
 ])
 
 export const optionsSchema = z.object({
@@ -112,6 +114,7 @@ export const STEP_LABELS: Record<StepType, string> = {
   type: 'Type',
   waitForSelector: 'Wait for selector',
   waitForNetworkIdle: 'Wait for network idle',
+  waitForNavigation: 'Wait for navigation',
 }
 
 const clip = (s: string, n = 60) => {
@@ -136,6 +139,8 @@ export function describeStep(step: Step): string {
       return `Wait for ${clip(step.selector)}`
     case 'waitForNetworkIdle':
       return `Wait for network idle (${step.idleMs}ms)`
+    case 'waitForNavigation':
+      return 'Wait for navigation to finish'
   }
 }
 

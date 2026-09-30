@@ -22,6 +22,6 @@ export function GET() {
     devices: Object.keys(DEVICES),
     networks: Object.keys(NETWORKS),
     waitUntil: Object.keys(WAIT_UNTIL),
-    stepTypes: ['navigate', 'wait', 'script', 'click', 'type', 'waitForSelector', 'waitForNetworkIdle'],
+    stepTypes: ['navigate', 'wait', 'script', 'click', 'type', 'waitForSelector', 'waitForNetworkIdle', 'waitForNavigation'],
   })
 }
